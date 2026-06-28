@@ -28,6 +28,10 @@ DATA_DIR="$DEPLOY_DIR/data"
 
 cd "$DEPLOY_DIR"
 
+# Use a fixed compose project name so volumes don't collide with other projects
+# in similarly-named directories. Override via COMPOSE_PROJECT_NAME env.
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-agentcollab}"
+
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║   Agent Collaboration OS — Deployment                       ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
