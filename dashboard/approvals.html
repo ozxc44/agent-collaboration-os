@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>审批中心 — Agent Collaboration OS</title>
+  <style>
+    :root { color-scheme:light; --bg:#eef2f6; --panel:#fff; --panel-2:#f8fafc; --line:#d7dee8; --text:#182230; --muted:#61708a; --soft:#7c8aa1; --accent:#2563eb; --good:#047857; --warn:#b45309; --bad:#b91c1c; --shadow:0 2px 8px rgba(24,34,48,.06); }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 Inter,system-ui,sans-serif; }
+    button { border:0; cursor:pointer; font:inherit; }
+    a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+    .navbar { background:var(--panel); border-bottom:1px solid var(--line); display:flex; align-items:center; gap:16px; padding:0 24px; height:52px; position:sticky; top:0; z-index:10; }
+    .navbar-brand { font-weight:700; font-size:15px; }
+    .navbar-nav { display:flex; gap:2px; flex:1; }
+    .nav-link { padding:6px 14px; border-radius:6px; font-size:13px; color:var(--muted); cursor:pointer; }
+    .nav-link:hover { background:var(--panel-2); color:var(--text); }
+    .nav-link.active { background:var(--accent); color:#fff; }
+    .navbar-right select { font-size:12px; padding:3px 8px; border:1px solid var(--line); border-radius:4px; }
+    .page { max-width:900px; margin:0 auto; padding:24px; }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; box-shadow:var(--shadow); margin-bottom:16px; }
+    .card-head { padding:12px 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; }
+    .card-head h2 { margin:0; font-size:15px; }
+    .btn { padding:5px 12px; border-radius:6px; font-size:12px; font-weight:500; }
+    .btn-primary { background:var(--accent); color:#fff; }
+    .btn-good { background:var(--good); color:#fff; }
+    .btn-ghost { background:transparent; color:var(--muted); border:1px solid var(--line); }
+    .btn-sm { padding:3px 8px; font-size:11px; }
+    .row { display:flex; align-items:center; gap:10px; padding:10px 16px; border-bottom:1px solid var(--line); }
+    .row:last-child { border-bottom:none; }
+    .row-title { font-size:13px; font-weight:500; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .row-meta { font-size:11px; color:var(--soft); }
+    .type-badge { font-size:11px; padding:2px 8px; border-radius:4px; font-weight:600; white-space:nowrap; }
+    .type-cs { background:#dbeafe; color:#1e40af; }
+    .type-join { background:#fef3c7; color:#92400e; }
+    .status-pill { font-size:11px; padding:1px 8px; border-radius:4px; }
+    .st-pending { background:#fef3c7; color:#92400e; }
+    .st-submitted { background:#dbeafe; color:#1e40af; }
+    .st-approved { background:#dcfce7; color:#166534; }
+    .hidden { display:none !important; }
+    .empty { text-align:center; color:var(--soft); padding:24px; font-size:13px; }
+  </style>
+</head>
+<body>
+
+<div class="navbar">
+  <div class="navbar-brand">Agent Collaboration OS</div>
+  <div class="navbar-nav">
+    <a class="nav-link" href="workbench.html">工作台</a>
+    <a class="nav-link" href="tasks.html">任务</a>
+    <a class="nav-link" href="repository.html">项目空间</a>
+    <a class="nav-link" href="agents.html">Agent</a>
+    <span class="nav-link active">审批</span>
+  </div>
+  <div class="navbar-right"><select id="projectSelect"></select></div>
+</div>
+
+<div class="page">
+  <!-- Changeset approvals -->
+  <div class="card">
+    <div class="card-head">
+      <h2>🔀 Changeset 审核</h2>
+      <span style="font-size:12px;color:var(--muted);" id="csCount"></span>
+    </div>
+    <div id="csList"><div class="empty">加载中…</div></div>
+  </div>
+
+  <!-- Join requests -->
+  <div class="card">
+    <div class="card-head">
+      <h2>👋 加入申请</h2>
+      <span style="font-size:12px;color:var(--muted);" id="joinCount"></span>
+    </div>
+    <div id="joinList"><div class="empty">加载中…</div></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var SK='zz_runtime_dashboard_v1';
+  var API=window.location.origin.replace(/:\d+$/,':18080')+'/agent';
+  var state={jwt:'',projectId:''};
+  function load(){try{return JSON.parse(localStorage.getItem(SK)||'{}')}catch{return{}}}
+  function save(){localStorage.setItem(SK,JSON.stringify({jwt:state.jwt,selectedProjectId:state.projectId}))}
+  function api(m,p,b){var o={method:m,headers:{'Content-Type':'application/json'}};if(state.jwt)o.headers.Authorization='Bearer '+state.jwt;if(b)o.body=JSON.stringify(b);return fetch(API+'/v1'+p,o).then(function(r){if(!r.ok)throw new Error(r.status);return r.json()})}
+  function esc(s){if(!s)return'';var d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+  function init(){
+    var s=load();state.jwt=s.jwt||'';state.projectId=s.selectedProjectId||'';
+    if(!state.jwt){window.location.href='workbench.html';return;}
+    api('GET','/projects?limit=100').then(function(res){
+      var ps=res.data||res||[];
+      var sel=document.getElementById('projectSelect');
+      sel.innerHTML=ps.map(function(p){return'<option value="'+p.id+'"'+(p.id===state.projectId?' selected':'')+'>'+esc(p.name)+'</option>'}).join('');
+      if(!state.projectId&&ps.length){state.projectId=ps[0].id;save();}
+      loadAll();
+    }).catch(function(){window.location.href='workbench.html';});
+  }
+  document.getElementById('projectSelect').addEventListener('change',function(e){state.projectId=e.target.value;save();loadAll();});
+
+  function loadAll(){
+    var pid=state.projectId;
+    Promise.all([
+      api('GET','/projects/'+pid+'/changesets?limit=20').catch(function(){return{data:[]}}),
+      api('GET','/projects/'+pid+'/join-requests?limit=20').catch(function(){return{data:[]}}),
+    ]).then(function(r){
+      renderCS(r[0].data||[]);
+      renderJoin(r[1].data||[]);
+    });
+  }
+
+  function renderCS(items){
+    // Show submitted + changes_requested (actionable), then others
+    var actionable=items.filter(function(c){return c.status==='submitted'||c.status==='changes_requested'||c.status==='ready_for_review'||c.status==='approved';});
+    document.getElementById('csCount').textContent=actionable.length+' 待处理';
+    if(!actionable.length){document.getElementById('csList').innerHTML='<div class="empty">✅ 没有 Changeset 待审核</div>';return;}
+    var stMap={submitted:'待审核',ready_for_review:'待审核',approved:'✅ 已批准',changes_requested:'需修改',merged:'已合并',rejected:'已拒绝'};
+    var stCls={submitted:'st-submitted',ready_for_review:'st-submitted',approved:'st-approved',changes_requested:'st-pending'};
+    var html=actionable.map(function(cs){
+      var fileCount=(cs.file_ops||[]).length;
+      var author=cs.created_by_agent_id?'Agent':'User';
+      var isApproved=cs.status==='approved';
+      var h='<div class="row">';
+      h+='<span class="type-badge type-cs">CS</span>';
+      h+='<span class="row-title">'+esc(cs.title||'Untitled')+'</span>';
+      h+='<span class="row-meta">'+fileCount+' files · '+author+'</span>';
+      h+='<span class="status-pill '+(stCls[cs.status]||'')+'">'+esc(stMap[cs.status]||cs.status)+'</span>';
+      // Actions
+      if(cs.status==='submitted'||cs.status==='ready_for_review'){
+        h+='<button class="btn btn-good btn-sm" data-cs-approve="'+cs.id+'">通过</button>';
+        h+='<button class="btn btn-ghost btn-sm" data-cs-reject="'+cs.id+'">退回</button>';
+      }
+      if(isApproved){h+='<button class="btn btn-primary btn-sm" data-cs-merge="'+cs.id+'">合并</button>';}
+      h+='</div>';
+      return h;
+    }).join('');
+    document.getElementById('csList').innerHTML=html;
+    // Wire actions
+    document.querySelectorAll('[data-cs-approve]').forEach(function(b){b.addEventListener('click',function(){doReview(b.getAttribute('data-cs-approve'),'approved');});});
+    document.querySelectorAll('[data-cs-reject]').forEach(function(b){b.addEventListener('click',function(){doReview(b.getAttribute('data-cs-reject'),'changes_requested');});});
+    document.querySelectorAll('[data-cs-merge]').forEach(function(b){b.addEventListener('click',function(){doMerge(b.getAttribute('data-cs-merge'));});});
+  }
+
+  function doReview(id,decision){
+    var notes=prompt(decision==='approved'?'审核备注(可选):':'请输入修改意见:');
+    if(decision==='changes_requested'&&!notes)return;
+    api('PATCH','/projects/'+state.projectId+'/changesets/'+id+'/review',{decision:decision,notes:notes||null}).then(function(){loadAll();}).catch(function(e){alert('操作失败: '+e.message);});
+  }
+  function doMerge(id){
+    api('POST','/projects/'+state.projectId+'/changesets/'+id+'/merge',{}).then(function(d){
+      alert('✅ 已合并! Git SHA: '+(d.commit&&d.commit.git_sha?d.commit.git_sha.slice(0,12):'N/A'));
+      loadAll();
+    }).catch(function(e){alert('合并失败: '+e.message);});
+  }
+
+  function renderJoin(items){
+    var pending=items.filter(function(j){return j.status==='pending';});
+    document.getElementById('joinCount').textContent=pending.length+' 待审批';
+    if(!pending.length){document.getElementById('joinList').innerHTML='<div class="empty">✅ 没有待审批的加入申请</div>';return;}
+    var html=pending.map(function(jr){
+      var h='<div class="row">';
+      h+='<span class="type-badge type-join">加入</span>';
+      h+='<span class="row-title">角色: '+esc(jr.requested_role||'member')+'</span>';
+      h+='<span class="row-meta">'+esc((jr.note||'').slice(0,40))+'</span>';
+      h+='<button class="btn btn-good btn-sm" data-join-approve="'+jr.id+'">批准</button>';
+      h+='<button class="btn btn-ghost btn-sm" data-join-reject="'+jr.id+'">拒绝</button>';
+      h+='</div>';
+      return h;
+    }).join('');
+    document.getElementById('joinList').innerHTML=html;
+    document.querySelectorAll('[data-join-approve]').forEach(function(b){b.addEventListener('click',function(){doJoin(b.getAttribute('data-join-approve'),'approved');});});
+    document.querySelectorAll('[data-join-reject]').forEach(function(b){b.addEventListener('click',function(){doJoin(b.getAttribute('data-join-reject'),'rejected');});});
+  }
+
+  function doJoin(id,decision){
+    api('PATCH','/projects/'+state.projectId+'/join-requests/'+id,{status:decision}).then(function(){loadAll();}).catch(function(e){alert('操作失败: '+e.message);});
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

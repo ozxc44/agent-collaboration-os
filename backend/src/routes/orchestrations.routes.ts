@@ -1,0 +1,2617 @@
+import crypto, { randomUUID } from 'crypto';
+import { Router, Request, Response } from 'express';
+import { EntityManager, In, Brackets, SelectQueryBuilder } from 'typeorm';
+import { AppDataSource } from '../data-source';
+import { authenticateJwtOrAgentApiKey, extractProjectId } from '../middleware/auth';
+import { requirePermission, Permission } from '../middleware/rbac';
+import {
+  Agent,
+  AgentLifecycleStatus,
+  Project,
+  ProjectBranch,
+  ProjectFile,
+  ProjectFileRevision,
+  ProjectChangeset,
+  ProjectChangesetStatus,
+  ProjectCommit,
+  ProjectOrchestration,
+  ProjectOrchestrationStatus,
+  ProjectOrchestrationTask,
+  ProjectOrchestrationTaskStatus,
+  Session,
+  SessionParticipant,
+  SessionStatus,
+} from '../entities';
+import { MessageVisibility } from '../entities/message.entity';
+import { getAgentPresence } from '../services/agent-presence.service';
+import { SessionDispatchService } from '../services/session-dispatch.service';
+import {
+  writeTaskMd,
+  writeResultMd,
+  writeEvidenceMd,
+  writeReviewMd,
+  writeChangelogMd,
+  writeTraceMd,
+  setMdArtifactPaths,
+  taskMdDir,
+  redactMarkdown,
+  redactValue,
+} from '../services/md-artifact.service';
+import { createInboxItem, upsertWorkUnit, updateWorkUnitOnReview, ackInboxItemsForTask } from './agent-inbox.routes';
+
+const router = Router();
+const dispatchService = new SessionDispatchService();
+const MAX_FILE_BYTES = 1024 * 1024;
+
+type ProjectFileUpsertInput = {
+  projectId: string;
+  path: string;
+  content: string;
+  contentType?: string;
+  actorId: string;
+  message?: string | null;
+};
+
+router.post(
+  '/v1/projects/:project_id/orchestrations',
+  authenticateJwtOrAgentApiKey,
+  extractProjectId,
+  requirePermission(Permission.SendMessage),
+  async (req: Request, res: Response) => {
+    try {
+      const projectId = req.params.project_id;
+      const actor = getActor(req);
+      if (!actor) {
+        res.status(401).json({ detail: 'Authentication required' });
+        return;
+      }
+
+      const title = normalizeRequiredString(req.body.title, 'title', 255);
+      const objective = normalizeRequiredString(req.body.objective, 'objective', 20_000);
+      if (!title.ok) {
+        res.status(422).json({ detail: title.error });
+        return;
+      }
+      if (!objective.ok) {
+        res.status(422).json({ detail: objective.error });
+        return;
+      }
+
+      const orchestrationId = randomUUID();
+      const basePathInput = typeof req.body.base_path === 'string'
+        ? req.body.base_path
+        : `.agent/orchestrations/${orchestrationId}`;
+      const basePath = validateProjectPath(trimTrailingSlash(basePathInput));
+      if (!basePath.ok) {
+        res.status(422).json({ detail: `base_path: ${basePath.error}` });
+        return;
+      }
+
+      let mainAgentId = typeof req.body.main_agent_id === 'string' ? req.body.main_agent_id.trim() : null;
+      if (req.agent) {
+        if (mainAgentId && mainAgentId !== req.agent.id) {
+          res.status(403).json({ detail: 'Agent cannot create orchestration for another main_agent_id' });
+          return;
+        }
+        mainAgentId = req.agent.id;
+      }
+
+      const workerAgentIds = normalizeStringArray(req.body.worker_agent_ids ?? req.body.agent_ids);
+      const agentIds = normalizeStringArray([mainAgentId, ...workerAgentIds].filter(Boolean));
+      if (!await ensureAgentsExistAndDispatchable(res, projectId, agentIds)) return;
+
+      const acceptanceCriteria = normalizeStringArray(req.body.acceptance_criteria);
+      const plan = typeof req.body.plan === 'string' ? req.body.plan.trim() : '';
+      const createSession = req.body.create_session !== false;
+
+      const orchestration = await AppDataSource.transaction(async (manager) => {
+        let session: Session | null = null;
+        if (createSession && agentIds.length > 0) {
+          session = await createOrchestrationSession(manager, {
+            projectId,
+            title: `Orchestration: ${title.value}`,
+            createdBy: actor.actorId,
+            agentIds,
+          });
+        }
+
+        const created = manager.create(ProjectOrchestration, {
+          id: orchestrationId,
+          projectId,
+          title: title.value,
+          objective: objective.value,
+          status: ProjectOrchestrationStatus.PLANNING,
+          basePath: basePath.value,
+          sessionId: session?.id ?? null,
+          mainAgentId,
+          createdByUserId: actor.userId,
+          createdByAgentId: actor.agentId,
+          acceptanceCriteria,
+          metadata: isPlainObject(req.body.metadata) ? req.body.metadata : null,
+        });
+        await manager.save(ProjectOrchestration, created);
+
+        await upsertProjectFile(manager, {
+          projectId,
+          path: `${basePath.value}/goal.md`,
+          content: renderGoalMd(created),
+          actorId: actor.actorId,
+          message: 'Create orchestration goal',
+        });
+        await upsertProjectFile(manager, {
+          projectId,
+          path: `${basePath.value}/plan.md`,
+          content: renderPlanMd(plan),
+          actorId: actor.actorId,
+          message: 'Create orchestration plan',
+        });
+        await upsertProjectFile(manager, {
+          projectId,
+          path: `${basePath.value}/tasks.json`,
+          content: '[]\n',
+          contentType: 'application/json',
+          actorId: actor.actorId,
+          message: 'Initialize orchestration task ledger',
+        });
+        await upsertProjectFile(manager, {
+          projectId,
+          path: `${basePath.value}/pm-review.md`,
+          content: '# PM Review\n\nNo reviews yet.\n',
+          actorId: actor.actorId,
+          message: 'Initialize PM review log',
+        });
+
+        return created;
+      });
+
+      res.status(201).json(serializeOrchestration(orchestration));
+    } catch (err) {
+      console.error('Create orchestration error:', err);
+      res.status(500).json({ detail: 'Internal server error' });
+    }
+  },
+);
+
+router.get(
+  '/v1/projects/:project_id/orchestrations',
+  authenticateJwtOrAgentApiKey,
+  extractProjectId,
+  requirePermission(Permission.ViewProject),
+  async (req: Request, res: Response) => {
+    try {
+      const projectId = req.params.project_id;
+      const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+      const qb = AppDataSource.getRepository(ProjectOrchestration)
+        .createQueryBuilder('orchestration')
+        .where('orchestration.projectId = :projectId', { projectId })
+        .orderBy('orchestration.createdAt', 'DESC');
+
+      if (status && Object.values(ProjectOrchestrationStatus).includes(status as ProjectOrchestrationStatus)) {
+        qb.andWhere('orchestration.status = :status', { status });
+      }
+      if (req.agent) {
+        qb.andWhere(
+          '(orchestration.mainAgentId = :agentId OR orchestration.id IN ' +
+            qb.subQuery()
+              .select('task.orchestrationId')
+              .from(ProjectOrchestrationTask, 'task')
+              .where('task.assignedAgentId = :agentId')
+              .getQuery() +
+            ')',
+          { agentId: req.agent.id },
+        );
+      }
+
+      const orchestrations = await qb.getMany();
+      res.json({ data: orchestrations.map((orchestration) => serializeOrchestration(orchestration)) });
+    } catch (err) {
+      console.error('List orchestrations error:', err);
+      res.status(500).json({ detail: 'Internal server error' });
+    }
+  },
+);
+
+router.get(
+  '/v1/projects/:project_id/orchestrations/:orchestration_id',
+  authenticateJwtOrAgentApiKey,
+  extractProjectId,
+  requirePermission(Permission.ViewProject),
+  async (req: Request, res: Response) => {
+    try {
+      const loaded = await loadOrchestrationWithTasks(req.params.project_id, req.params.orchestration_id);
+      if (!loaded) {
+        res.status(404).json({ detail: 'Orchestration not found' });
+        return;
+      }
+      if (!canViewOrchestration(req, loaded.orchestration, loaded.tasks)) {
+        res.status(403).json({ detail: 'Agent is not part of this orchestration' });
+        return;
+      }
+      res.json(serializeOrchestration(loaded.orchestration, loaded.tasks));
+    } catch (err) {
+      console.error('Get orchestration error:', err);
+      res.status(500).json({ detail: 'Internal server error' });
+    }
+  },
+);
+
+router.post(
+  '/v1/projects/:project_id/orchestrations/:orchestration_id/tasks',
+  authenticateJwtOrAgentApiKey,
+  extractProjectId,
+  requirePermission(Permission.SendMessage),
+  async (req: Request, res: Response) => {
+    try {
+      const projectId = req.params.project_id;
+      const actor = getActor(req);
+      if (!actor) {
+        res.status(401).json({ detail: 'Authentication required' });
+        return;
+      }
+      const orchestration = await loadOrchestration(projectId, req.params.orchestration_id);
+      if (!orchestration) {
+        res.status(404).json({ detail: 'Orchestration not found' });
+        return;
+      }
+      if (!await ensureMainAgentOrUser(req, res, orchestration)) return;
+
+      const title = normalizeRequiredString(req.body.title, 'title', 255);
+      const goal = normalizeRequiredString(req.body.goal, 'goal', 20_000);
+      if (!title.ok) {
+        res.status(422).json({ detail: title.error });
+        return;
+      }
+      if (!goal.ok) {
+        res.status(422).json({ detail: goal.error });
+        return;
+      }
+
+      const assignedAgentId = typeof req.body.assigned_agent_id === 'string'
+        ? req.body.assigned_agent_id.trim()
+        : null;
+      if (assignedAgentId && !await ensureAgentsExistAndDispatchable(res, projectId, [assignedAgentId])) return;
+
+      const task = await AppDataSource.transaction(async (manager) => {
+        const taskId = randomUUID();
+        const isDispatched = req.body.dispatch !== false;
+        const created = manager.create(ProjectOrchestrationTask, {
+          id: taskId,
+          projectId,
+          orchestrationId: orchestration.id,
+          title: title.value,
+          goal: goal.value,
+          status: isDispatched
+            ? ProjectOrchestrationTaskStatus.DISPATCHED
+            : ProjectOrchestrationTaskStatus.PENDING,
+          assignedAgentId,
+          workerTaskPath: `${orchestration.basePath}/workers/${taskId}.worker_task.md`,
+          workerContextPath: `${orchestration.basePath}/workers/${taskId}.worker_context.md`,
+          acceptanceCriteria: normalizeStringArray(req.body.acceptance_criteria),
+          dependsOn: normalizeStringArray(req.body.depends_on),
+          createdByUserId: actor.userId,
+          createdByAgentId: actor.agentId,
+          dispatchedAt: isDispatched ? new Date() : undefined,
+        });
+        await manager.save(ProjectOrchestrationTask, created);
+
+        if (orchestration.status === ProjectOrchestrationStatus.PLANNING) {
+          orchestration.status = ProjectOrchestrationStatus.RUNNING;
+          await manager.save(ProjectOrchestration, orchestration);
+        }
+
+        await upsertProjectFile(manager, {
+          projectId,
+          path: created.workerTaskPath,
+          content: renderWorkerTaskMd(orchestration, created, req.body.scope),
+          actorId: actor.actorId,
+          message: `Dispatch worker task ${created.id}`,
+        });
+        // Inject the project's current git HEAD SHA so the worker knows the
+        // codebase baseline (best-effort; null when git backend isn't populated).
+        let workerGitHead: string | null = null;
+        try {
+          const { gitHeadSha } = await import('../services/project-git.service');
+          workerGitHead = await gitHeadSha(projectId);
+        } catch { /* git not initialized yet */ }
+        await upsertProjectFile(manager, {
+          projectId,
+          path: created.workerContextPath,
+          content: renderWorkerContextMd(orchestration, created, req.body.context, workerGitHead),
+          actorId: actor.actorId,
+          message: `Create worker context ${created.id}`,
+        });
+
+        // ── MD artifact: TASK.md ──────────────────────────────────────────
+        const scopeText = typeof req.body.scope === 'string' && req.body.scope.trim()
+          ? req.body.scope.trim()
+          : 'Use the task goal and context. Keep changes scoped.';
+        await writeTaskMd(manager, orchestration, created, scopeText);
+
+        // Store task artifact paths in metadata
+        const taskDir = taskMdDir(orchestration.basePath, created.id);
+        setMdArtifactPaths(created, {
+          task_dir: taskDir,
+          task: `${taskDir}/TASK.md`,
+        });
+        await manager.save(ProjectOrchestrationTask, created);
+
+        await refreshTaskLedger(manager, orchestration, actor.actorId);
+
+        return created;
+      });
+
+      if (task.status === ProjectOrchestrationTaskStatus.DISPATCHED) {
+        // Ensure the assigned worker is a session participant so the platform can
+        // invoke its endpoint (dispatchService only invokes participant agents).
+        // Without this, a task dispatched to an agent that wasn't in the session
+        // at orchestration-creation time is never invoked — it sits in 'dispatched'
+        // forever even with a valid endpoint_url. (the root cause of "agent won't
+        // respond to dispatched tasks".)
+        if (task.assignedAgentId && orchestration.sessionId) {
+          const partRepo = AppDataSource.getRepository(SessionParticipant);
+          const existing = await partRepo.findOne({
+            where: { sessionId: orchestration.sessionId, agentId: task.assignedAgentId },
+          });
+          if (!existing) {
+            await partRepo.save(partRepo.create({
+              sessionId: orchestration.sessionId,
+              agentId: task.assignedAgentId,
+            }));
+          }
+        }
+
+        await notifyAgentInSession({
+          projectId,
+          sessionId: orchestration.sessionId ?? null,
+          actorId: actor.actorId,
+          recipientAgentId: task.assignedAgentId ?? null,
+          content: [
+            `Task dispatched: ${task.title}`,
+            '',
+            `Task ID: ${task.id}`,
+            `Task file: ${task.workerTaskPath}`,
+            `Context file: ${task.workerContextPath}`,
+            '',
+            'Read the task/context markdown, complete the work, then call the complete endpoint with result_md and evidence.',
+          ].join('\n'),
+          idempotencyKey: `orchestration:${orchestration.id}:task:${task.id}:dispatch`,
+        });
+
+        // Durable inbox: notify assigned worker agent
+        if (task.assignedAgentId) {
+          await createInboxItem({
+            projectId,
+            recipientAgentId: task.assignedAgentId,
+            eventType: 'task_dispatched',
+            title: `Task dispatched: ${task.title}`,
+            body: [
+              `Task ID: ${task.id}`,
+              `Goal: ${task.goal}`,
+              '',
+              '## Execution Steps (follow these to complete this task)',
+              '',
+              '1. **Acknowledge**: POST /v1/agent/inbox/<this_inbox_id>/ack',
+              '2. **Claim**: PATCH /v1/projects/<project_id>/orchestrations/<orch_id>/tasks/<task_id>/claim',
+              '3. **Read context**: GET /v1/projects/<project_id>/orchestrations/<orch_id>/tasks/<task_id> (read goal, acceptance_criteria, worker_context_path)',
+              '4. **Understand the codebase**: If .agent/code-map.md exists, it is already in your context. Use GET /v1/projects/<project_id>/repository/search?q=<keywords> to find relevant code.',
+              '5. **Do the work**: Implement the goal. Use your own capabilities (LLM, code generation, analysis, etc.).',
+              '6. **Submit result**: POST /v1/projects/<project_id>/orchestrations/<orch_id>/tasks/<task_id>/complete with body: {"result_md": "# Your result\\n...", "evidence": {<key-value evidence>}, "status": "ready_for_review"}',
+              '7. **If changes requested**: You will receive a task_changes_requested notification. Fix the issues and re-submit via the same complete endpoint.',
+              '',
+              '## Quick CLI Commands',
+              '```bash',
+              `zz agent inbox           # see this task`,
+              `zz tasks claim -p <project_id> -o <orch_id> <task_id>`,
+              `zz agent submit --result @./result.md   # submit when done`,
+              '```',
+              '',
+              '## Full Guide',
+              'GET /v1/agent/execution-guide for the complete agent execution workflow.',
+            ].join('\n'),
+            orchestrationId: orchestration.id,
+            taskId: task.id,
+          });
+        }
+      }
+
+      res.status(201).json(serializeTask(task));
+    } catch (err) {
+      console.error('Create orchestration task error:', err);
+      res.status(500).json({ detail: 'Internal server error' });
+    }
+  },
+);
+
+router.get(
+  '/v1/projects/:project_id/orchestrations/:orchestration_id/tasks',
+  authenticateJwtOrAgentApiKey,
+  extractProjectId,
+  requirePermission(Permission.ViewProject),
+  async (req: Request, res: Response) => {
+    try {
+      const loaded = await loadOrchestrationWithTasks(req.params.project_id, req.params.orchestration_id);
+      if (!loaded) {
+        res.status(404).json({ detail: 'Orchestration not found' });
+        return;
+      }
+      if (!canViewOrchestration(req, loaded.orchestration, loaded.tasks)) {
+        res.status(403).json({ detail: 'Agent is not part of this orchestration' });
+        return;
+      }
+      res.json({ data: loaded.tasks.map(serializeTask) });
+    } catch (err) {
+      console.error('List orchestration tasks error:', err);
+      res.status(500).json({ detail: 'Internal server error' });
+    }
+  },
+);
+
+router.get(
+  '/v1/projects/:project_id/orchestrations/:orchestration_id/tasks/:task_id',
+  authenticateJwtOrAgentApiKey,
+  extractProjectId,
+  requirePermission(Permission.ViewProject),
+  async (req: Request, res: Response) => {
+    try {
+      const task = await loadTask(req.params.project_id, req.params.orchestration_id, req.params.task_id);
+      if (!task) {
+        res.status(404).json({ detail: 'Task not found' });
+        return;
+      }
+      if (req.agent && task.assignedAgentId !== req.agent.id && task.orchestration.mainAgentId !== req.agent.id) {
+        res.status(403).json({ detail: 'Agent is not part of this task' });
+        return;
+      }
+      res.json(serializeTask(task));
+    } catch (err) {
+      console.error('Get orchestration task error:', err);
+      res.status(500).json({ detail: 'Internal server error' });
+    }
+  },
+);
+
+router.get(
+  '/v1/projects/:project_id/orchestration-tasks',
+  authenticateJwtOrAgentApiKey,
+  extractProjectId,
+  requirePermission(Permission.ViewProject),
+  async (req: Request, res: Response) => {
+    try {
+      const projectId = req.params.project_id;
+      const {
+        status: statusFilter,
+        q,
+        assigned_agent_id: assignedAgentId,
+        limit: limitParam,
+        offset: offsetParam,
+        sort: sortParam,
+      } = req.query;
+
+      // Agent callers cannot use assigned_agent_id to view another agent's tasks.
+      if (req.agent && assignedAgentId && typeof assignedAgentId === 'string' && assignedAgentId !== req.agent.id) {
+        res.status(403).json({ detail: 'Agent cannot filter by another agent' });
+        return;
+      }
+
+      const statuses = parseStatusFilter(statusFilter);
+      const invalidStatuses = statuses.filter(
+        (s) => !Object.values(ProjectOrchestrationTaskStatus).includes(s as ProjectOrchestrationTaskStatus),
+      );
+      if (invalidStatuses.length > 0) {
+        res.status(422).json({ detail: `Invalid status values: ${invalidStatuses.join(', ')}` });
+        return;
+      }
+
+      const { limit, offset } = parsePagination(limitParam, offsetParam);
+      const sort = parseSort(sortParam);
+
+      const baseQb = AppDataSource.getRepository(ProjectOrchestrationTask)
+        .createQueryBuilder('task')
+        .innerJoinAndSelect('task.orchestration', 'orchestration')
+        .where('task.projectId = :projectId', { projectId });
+
+      if (statuses.length > 0) {
+        baseQb.andWhere('task.status IN (:...statuses)', { statuses });
+      }
+
+      if (q && typeof q === 'string' && q.trim()) {
+        const pattern = `%${escapeLikePattern(q.trim())}%`;
+        baseQb.andWhere(
+          new Brackets((subQb) => {
+            subQb
+              .where('task.title LIKE :q ESCAPE \'!\'', { q: pattern })
+              .orWhere('task.goal LIKE :q ESCAPE \'!\'', { q: pattern })
+              .orWhere('orchestration.title LIKE :q ESCAPE \'!\'', { q: pattern });
+          }),
+        );
+      }
+
+      if (assignedAgentId && typeof assignedAgentId === 'string') {
+        baseQb.andWhere('task.assignedAgentId = :assignedAgentId', { assignedAgentId });
+      }
+
+      // Agent callers see only tasks in their visible scope: assigned to them,
+      // or in orchestrations where they are the main agent / an assigned worker.
+      if (req.agent) {
+        const agentId = req.agent.id;
+        baseQb.andWhere(
+          new Brackets((subQb) => {
+            subQb
+              .where('task.assignedAgentId = :agentId', { agentId })
+              .orWhere('orchestration.mainAgentId = :agentId', { agentId })
+              .orWhere(
+                'EXISTS (SELECT 1 FROM project_orchestration_tasks t2 WHERE t2.orchestration_id = task.orchestrationId AND t2.assigned_agent_id = :agentId)',
+                { agentId },
+              );
+          }),
+        );
+      }
+
+      const countQb = baseQb.clone();
+      const total = await countQb.getCount();
+
+      const dataQb = baseQb.clone();
+      applyTaskSort(dataQb, sort);
+      dataQb.skip(offset).take(limit);
+      const tasks = await dataQb.getMany();
+
+      const summaryQb = baseQb.clone();
+      summaryQb
+        .select('task.status', 'status')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('task.status');
+      const statusCountRows = (await summaryQb.getRawMany()) as { status: ProjectOrchestrationTaskStatus; count: string }[];
+      const statusSummary = buildSummary(statusCountRows);
+
+      const [assignees, orchestrations, batches, timeline] = await Promise.all([
+        buildAssigneeSummary(baseQb),
+        buildOrchestrationSummary(baseQb),
+        buildBatchSummary(baseQb),
+        buildTimelineSummary(baseQb),
+      ]);
+
+      res.json({
+        data: tasks.map((task) => serializeProjectTaskRow(task)),
+        total,
+        limit,
+        offset,
+        summary: {
+          ...statusSummary,
+          assignees,
+          orchestrations,
+          batches,
+          timeline,
+        },
+      });
+    } catch (err) {
+      console.error('List project orchestration tasks error:', err);
+      res.status(500).json({ detail: 'Internal server error' });
+    }
+  },
+);
+
+router.get(
+  '/v1/projects/:project_id/orchestration-tasks/:task_id',
+  authenticateJwtOrAgentApiKey,
+  extractProjectId,
+  requirePermission(Permission.ViewProject),
+  async (req: Request, res: Response) => {
+    try {
+      const projectId = req.params.project_id;
+      const taskId = req.params.task_id;
+      const task = await loadProjectTask(projectId, taskId);
+      if (!task) {
+        res.status(404).json({ detail: 'Task not found' });
+        return;
+      }
+      if (req.agent && !(await canViewProjectTask(task, req.agent.id))) {
+        res.status(403).json({ detail: 'Agent is not part of this task' });
+        return;
+      }
+      const related = await loadProjectTaskRelatedChanges(projectId, taskId);
+      res.json(serializeProjectTaskRow(task, related));
+    } catch (err) {
+      console.error('Get project orchestration task error:', err);
+      res.status(500).json({ detail: 'Internal server error' });
+    }
+  },
+);
+
+router.patch(
+  '/v1/projects/:project_id/orchestrations/:orchestration_id/tasks/:task_id/claim',
+  authenticateJwtOrAgentApiKey,
+  extractProjectId,
+  requirePermission(Permission.SendMessage),
+  async (req: Request, res: Response) => {
+    try {
+      const actor = getActor(req);
+      if (!actor) {
+        res.status(401).json({ detail: 'Authentication required' });
+        return;
+      }
+      const task = await loadTask(req.params.project_id, req.params.orchestration_id, req.params.task_id);
+      if (!task) {
+        res.status(404).json({ detail: 'Task not found' });
+        return;
+      }
+      if (!ensureAssignedWorkerOrUser(req, res, task)) return;
+
+      // ── Atomic claim ────────────────────────────────────────────────────────
+      // Use an atomic UPDATE with a status guard to prevent concurrent requests
+      // from both claiming the same fresh task.  Only tasks in a claimable initial
+      // state (dispatched, pending, changes_requested, blocked, failed,
+      // ready_for_review) can transition to running atomically.  Once running, a
+      // different WHERE branch covers re-claim by the same worker.
+      const claimableStatuses = [
+        ProjectOrchestrationTaskStatus.PENDING,
+        ProjectOrchestrationTaskStatus.DISPATCHED,
+        ProjectOrchestrationTaskStatus.READY_FOR_REVIEW,
+        ProjectOrchestrationTaskStatus.CHANGES_REQUESTED,
+        ProjectOrchestrationTaskStatus.BLOCKED,
+        ProjectOrchestrationTaskStatus.FAILED,
+      ];
+      const updateFields: Record<string, unknown> = {
+        status: ProjectOrchestrationTaskStatus.RUNNING,
+      };
+      if (req.agent && !task.assignedAgentId) {
+        updateFields.assignedAgentId = req.agent.id;
+      }
+
+      const repo = AppDataSource.getRepository(ProjectOrchestrationTask);
+      const claimResult = await repo
+        .createQueryBuilder()
+        .update()
+        .set(updateFields)
+        .where('id = :id', { id: task.id })
+        .andWhere('status IN (:...claimableStatuses)', { claimableStatuses })
+        .execute();
+
+      if (claimResult.affected === 0) {
+        // No row was updated — the task is either already running (possibly
+        // claimed by a concurrent request) or in a terminal state.
+        const currentTask = await repo.findOne({
+          where: { id: task.id },
+          relations: ['orchestration'],
+        });
+        if (!currentTask) {
+          res.status(404).json({ detail: 'Task not found' });
+          return;
+        }
+        // Allow re-claim by the same worker (idempotent).
+        if (
+          currentTask.status === ProjectOrchestrationTaskStatus.RUNNING &&
+          req.agent && currentTask.assignedAgentId === req.agent.id
+        ) {
+          res.json(serializeTask(currentTask));
+          return;
+        }
+        res.status(409).json({ detail: `Task cannot be claimed from status ${currentTask.status}` });
+        return;
+      }
+
+      // Atomic claim succeeded — reload the claimed task.
+      const claimedTask = await repo.findOne({
+        where: { id: task.id },
+        relations: ['orchestration'],
+      });
+      if (!claimedTask) {
+        res.status(404).json({ detail: 'Task not found after claim' });
+        return;
+      }
+      // Record the claim phase timestamp (first claim wins so re-claims don't
+      // move the TTFT claim marker).
+      claimedTask.claimedAt = claimedTask.claimedAt ?? new Date();
+      await repo.save(claimedTask);
+      await AppDataSource.transaction((manager) => refreshTaskLedger(manager, claimedTask.orchestration, actor.actorId));
+      res.json(serializeTask(claimedTask));
+    } catch (err) {
+      console.error('Claim orchestration task error:', err);
+      res.status(500).json({ detail: 'Internal server error' });
+    }
+  },
+);
+
+router.post(
+  '/v1/projects/:project_id/orchestrations/:orchestration_id/tasks/:task_id/complete',
+  authenticateJwtOrAgentApiKey,
+  extractProjectId,
+  requirePermission(Permission.SendMessage),
+  async (req: Request, res: Response) => {
+    try {
+      const projectId = req.params.project_id;
+      const actor = getActor(req);
+      if (!actor) {
+        res.status(401).json({ detail: 'Authentication required' });
+        return;
+      }
+      const task = await loadTask(projectId, req.params.orchestration_id, req.params.task_id);
+      if (!task) {
+        res.status(404).json({ detail: 'Task not found' });
+        return;
+      }
+      if (!ensureAssignedWorkerOrUser(req, res, task)) return;
+      if (task.status === ProjectOrchestrationTaskStatus.APPROVED || task.status === ProjectOrchestrationTaskStatus.CANCELLED) {
+        res.status(409).json({ detail: `Task cannot be completed from status ${task.status}` });
+        return;
+      }
+
+      const resultMd = typeof req.body.result_md === 'string' ? req.body.result_md.trim() : '';
+      if (!resultMd) {
+        res.status(422).json({ detail: 'result_md is required' });
+        return;
+      }
+      const evidence = normalizeEvidence(req.body.evidence);
+      const nextStatus = normalizeCompletionStatus(req.body.status);
+      if (!nextStatus) {
+        res.status(422).json({ detail: 'status must be ready_for_review, blocked, or failed' });
+        return;
+      }
+
+      const safeResultMd = redactMarkdown(resultMd);
+      const safeEvidence = redactValue(evidence) as Record<string, unknown>;
+
+      const updated = await AppDataSource.transaction(async (manager) => {
+        const resultPath = `${task.orchestration.basePath}/workers/${task.id}.result.md`;
+        const evidencePath = `${task.orchestration.basePath}/workers/${task.id}.evidence.json`;
+
+        await upsertProjectFile(manager, {
+          projectId,
+          path: resultPath,
+          content: safeResultMd.endsWith('\n') ? safeResultMd : `${safeResultMd}\n`,
+          actorId: actor.actorId,
+          message: `Worker result for ${task.id}`,
+        });
+        await upsertProjectFile(manager, {
+          projectId,
+          path: evidencePath,
+          content: JSON.stringify(safeEvidence, null, 2) + '\n',
+          contentType: 'application/json',
+          actorId: actor.actorId,
+          message: `Worker evidence for ${task.id}`,
+        });
+
+        task.resultPath = resultPath;
+        task.evidencePath = evidencePath;
+        task.status = nextStatus;
+        task.completedAt = new Date();
+        // A worker submitting completion has engaged the task; backfill the claim
+        // phase if the explicit /claim step was skipped (dispatched -> complete).
+        task.claimedAt = task.claimedAt ?? new Date();
+        task.reviewNotes = null;
+        task.requestedChanges = null;
+        (task as any).reviewedAt = null;
+
+        // ── MD artifacts: RESULT.md, EVIDENCE.md, CHANGELOG.md ─────────
+        const resultMdPath = await writeResultMd(manager, task, safeResultMd);
+        const evMdPath = await writeEvidenceMd(manager, task, safeEvidence);
+        const chgMdPath = await writeChangelogMd(manager, task, safeResultMd, safeEvidence);
+
+        const taskDir = taskMdDir(task.orchestration.basePath, task.id);
+        setMdArtifactPaths(task, {
+          task_dir: taskDir,
+          task: `${taskDir}/TASK.md`,
+          result: resultMdPath,
+          evidence: evMdPath,
+          changelog: chgMdPath,
+        });
+        await manager.save(ProjectOrchestrationTask, task);
+
+        if (nextStatus === ProjectOrchestrationTaskStatus.BLOCKED) {
+          task.orchestration.status = ProjectOrchestrationStatus.BLOCKED;
+        } else if (nextStatus === ProjectOrchestrationTaskStatus.FAILED) {
+          task.orchestration.status = ProjectOrchestrationStatus.FAILED;
+        } else if (
+          task.orchestration.status === ProjectOrchestrationStatus.PLANNING ||
+          task.orchestration.status === ProjectOrchestrationStatus.BLOCKED ||
+          task.orchestration.status === ProjectOrchestrationStatus.FAILED
+        ) {
+          task.orchestration.status = ProjectOrchestrationStatus.RUNNING;
+        }
+        await manager.save(ProjectOrchestration, task.orchestration);
+        await refreshTaskLedger(manager, task.orchestration, actor.actorId);
+
+        // ── Auto-create a changeset so the main agent can review+merge the
+        // worker's deliverable. Only when the worker actually produced a
+        // ready_for_review result (not for blocked/failed). The changeset is
+        // declarative: it references the RESULT.md already written above, with
+        // base_revision_id pointing at that revision so merge won't conflict.
+        if (nextStatus === ProjectOrchestrationTaskStatus.READY_FOR_REVIEW) {
+          try {
+            await createTaskCompletionChangeset(manager, {
+              projectId,
+              task,
+              actor,
+              resultMdPath,
+              resultMdContent: safeResultMd,
+              legacyResultPath: resultPath,
+              legacyEvidencePath: evidencePath,
+            });
+          } catch (csErr) {
+            // Best-effort: never fail the completion on a changeset error.
+            console.error('Auto-create changeset on complete failed:', csErr);
+          }
+        }
+
+        return task;
+      });
+
+      await notifyAgentInSession({
+        projectId,
+        sessionId: updated.orchestration.sessionId ?? null,
+        actorId: actor.actorId,
+        recipientAgentId: updated.orchestration.mainAgentId ?? null,
+        content: [
+          `Task ${updated.status}: ${updated.title}`,
+          '',
+          `Task ID: ${updated.id}`,
+          updated.resultPath ? `Result file: ${updated.resultPath}` : null,
+          updated.evidencePath ? `Evidence file: ${updated.evidencePath}` : null,
+          '',
+          'PM should review this task and either approve or request changes.',
+        ].filter(Boolean).join('\n'),
+        idempotencyKey: `orchestration:${updated.orchestrationId}:task:${updated.id}:complete:${Date.now()}`,
+      });
+
+      // Durable inbox: notify main agent(s) of task completion.
+      // Notify BOTH orchestration-level mainAgent AND project-level mainAgent,
+      // so whoever is the current project PM always receives review notifications
+      // without needing to switch every orchestration individually.
+      const reviewBody = [
+        `Task ID: ${updated.id}`,
+        `Status: ${updated.status}`,
+        updated.resultPath ? `Result: ${updated.resultPath}` : '',
+        '',
+        '## Review Actions (execute now)',
+        '',
+        '1. Check auto-changeset: GET /v1/projects/<pid>/changesets?task_id=<task_id>',
+        '2. Approve + merge: zz changesets approve-and-merge <cs_id> -p <pid>',
+        '3. Approve task: zz tasks review -p <pid> -o <oid> <tid> --decision approved',
+        '',
+        'Or via API:',
+        '   PATCH /v1/projects/<pid>/changesets/<cs_id>/review {"decision":"approved"}',
+        '   POST /v1/projects/<pid>/changesets/<cs_id>/merge',
+        '   PATCH /v1/projects/<pid>/orchestrations/<oid>/tasks/<tid>/review {"decision":"approved"}',
+        '',
+        'If changes needed: decision "changes_requested" + requested_changes field.',
+      ].filter(Boolean).join('\n');
+
+      const reviewRecipients = new Set<string>();
+      if (updated.orchestration.mainAgentId) reviewRecipients.add(updated.orchestration.mainAgentId);
+
+      // Also notify the project-level main agent (may differ from orchestration PM).
+      try {
+        const projMain = await AppDataSource.getRepository(Project).findOne({
+          where: { id: projectId },
+          select: ['id', 'mainAgentId'],
+        });
+        if (projMain?.mainAgentId) reviewRecipients.add(projMain.mainAgentId);
+      } catch {}
+
+      for (const pmAgentId of reviewRecipients) {
+        await createInboxItem({
+          projectId,
+          recipientAgentId: pmAgentId,
+          eventType: `task_${updated.status}`,
+          title: `Task ${updated.status}: ${updated.title}`,
+          body: reviewBody,
+          orchestrationId: updated.orchestrationId,
+          taskId: updated.id,
+        }).catch(() => {});
+
+        // Also push a nudge so PM sees it on next heartbeat.
+        try {
+          await createInboxItem({
+            projectId,
+            recipientAgentId: pmAgentId,
+            eventType: 'execution_nudge' as any,
+            title: `🔔 Review needed: ${updated.title} (${updated.status})`,
+            body: [
+              'A worker submitted work for your review.',
+              '',
+              'Quick action:',
+              '  zz changesets approve-and-merge <cs_id> -p <pid>',
+              '  zz tasks review -p <pid> -o <oid> <tid> --decision approved',
+            ].join('\n'),
+          }).catch(() => {});
+        } catch {}
+      }
+
+      // Workload ledger: create/update work unit for worker
+      if (updated.assignedAgentId) {
+        await upsertWorkUnit({
+          projectId,
+          agentId: updated.assignedAgentId,
+          sourceEvent: `task_${updated.status}`,
+          orchestrationId: updated.orchestrationId,
+          taskId: updated.id,
+          status: updated.status === 'ready_for_review' ? 'completed'
+            : updated.status === 'blocked' ? 'blocked'
+            : 'failed',
+          completedAt: new Date(),
+          sourceType: 'orchestration_task',
+          provisionalWorkUnits: 1.0,
+          idempotencyKey: `wu:${updated.orchestrationId}:${updated.id}:${updated.assignedAgentId}`,
+        });
+      }
+
+      res.json(serializeTask(updated));
+    } catch (err) {
+      console.error('Complete orchestration task error:', err);
+      res.status(500).json({ detail: 'Internal server error' });
+    }
+  },
+);
+
+router.patch(
+  '/v1/projects/:project_id/orchestrations/:orchestration_id/tasks/:task_id/review',
+  authenticateJwtOrAgentApiKey,
+  extractProjectId,
+  requirePermission(Permission.SendMessage),
+  async (req: Request, res: Response) => {
+    try {
+      const actor = getActor(req);
+      if (!actor) {
+        res.status(401).json({ detail: 'Authentication required' });
+        return;
+      }
+      const task = await loadTask(req.params.project_id, req.params.orchestration_id, req.params.task_id);
+      if (!task) {
+        res.status(404).json({ detail: 'Task not found' });
+        return;
+      }
+      if (!await ensureMainAgentOrUser(req, res, task.orchestration)) return;
+      if (task.status !== ProjectOrchestrationTaskStatus.READY_FOR_REVIEW) {
+        res.status(409).json({ detail: `Task must be ready_for_review before review, current status is ${task.status}` });
+        return;
+      }
+
+      const decision = req.body.decision;
+      if (decision !== 'approved' && decision !== 'changes_requested') {
+        res.status(422).json({ detail: 'decision must be approved or changes_requested' });
+        return;
+      }
+      const notes = typeof req.body.notes === 'string' ? req.body.notes.trim().slice(0, 20_000) : '';
+      const requestedChanges = typeof req.body.requested_changes === 'string'
+        ? req.body.requested_changes.trim().slice(0, 20_000)
+        : '';
+      if (decision === 'changes_requested' && !requestedChanges) {
+        res.status(422).json({ detail: 'requested_changes is required when decision is changes_requested' });
+        return;
+      }
+
+      const updated = await AppDataSource.transaction(async (manager) => {
+        task.status = decision === 'approved'
+          ? ProjectOrchestrationTaskStatus.APPROVED
+          : ProjectOrchestrationTaskStatus.CHANGES_REQUESTED;
+        task.reviewNotes = notes || null;
+        task.requestedChanges = decision === 'changes_requested' ? requestedChanges : null;
+        task.reviewedAt = new Date();
+        await manager.save(ProjectOrchestrationTask, task);
+
+        await appendPmReview(manager, task.orchestration, task, {
+          decision,
+          notes,
+          requestedChanges,
+          actorId: actor.actorId,
+        });
+
+        // ── MD artifact: REVIEW.md ─────────────────────────────────────
+        const reviewPath = await writeReviewMd(manager, task.orchestration, task, {
+          decision,
+          notes,
+          requestedChanges,
+          actorId: actor.actorId,
+        });
+
+        const taskDir = taskMdDir(task.orchestration.basePath, task.id);
+        setMdArtifactPaths(task, { review: reviewPath });
+        await manager.save(ProjectOrchestrationTask, task);
+
+        const allTasks = await manager.find(ProjectOrchestrationTask, {
+          where: { orchestrationId: task.orchestrationId },
+          order: { createdAt: 'ASC' },
+        });
+        if (decision === 'approved' && allTasks.length > 0 && allTasks.every((item) => item.status === ProjectOrchestrationTaskStatus.APPROVED)) {
+          task.orchestration.status = ProjectOrchestrationStatus.READY_FOR_ACCEPTANCE;
+        } else if (decision === 'changes_requested') {
+          task.orchestration.status = ProjectOrchestrationStatus.RUNNING;
+        }
+        await manager.save(ProjectOrchestration, task.orchestration);
+        await refreshTaskLedger(manager, task.orchestration, actor.actorId);
+
+        return task;
+      });
+
+      if (decision === 'changes_requested') {
+        await notifyAgentInSession({
+          projectId: updated.projectId,
+          sessionId: updated.orchestration.sessionId ?? null,
+          actorId: actor.actorId,
+          recipientAgentId: updated.assignedAgentId ?? null,
+          content: [
+            `Changes requested: ${updated.title}`,
+            '',
+            `Task ID: ${updated.id}`,
+            requestedChanges,
+            '',
+            'Please revise the result and call the complete endpoint again.',
+          ].join('\n'),
+          idempotencyKey: `orchestration:${updated.orchestrationId}:task:${updated.id}:changes:${Date.now()}`,
+        });
+
+        // Durable inbox: notify worker of changes requested
+        if (updated.assignedAgentId) {
+          await createInboxItem({
+            projectId: updated.projectId,
+            recipientAgentId: updated.assignedAgentId,
+            eventType: 'task_changes_requested',
+            title: `Changes requested: ${updated.title}`,
+            body: `Task ID: ${updated.id}. ${requestedChanges}`,
+            orchestrationId: updated.orchestrationId,
+            taskId: updated.id,
+          });
+        }
+      }
+
+      if (decision === 'approved') {
+        // Clear the worker's original task_dispatched / task_ready_for_review
+        // notifications now that the task reached a terminal state — otherwise
+        // they linger as "ghost" notifications pointing at a finished task.
+        if (updated.assignedAgentId) {
+          await ackInboxItemsForTask(updated.assignedAgentId, updated.id).catch((e: any) =>
+            console.error('Failed to ack worker inbox on approval:', e));
+        }
+        // Also clear any PM-facing review notifications for this task.
+        const reviewRecipients = new Set<string>();
+        if (updated.orchestration.mainAgentId) reviewRecipients.add(updated.orchestration.mainAgentId);
+        for (const rid of reviewRecipients) {
+          await ackInboxItemsForTask(rid, updated.id).catch(() => {});
+        }
+        // Durable inbox: informational approval notification to worker
+        if (updated.assignedAgentId) {
+          await createInboxItem({
+            projectId: updated.projectId,
+            recipientAgentId: updated.assignedAgentId,
+            eventType: 'task_approved',
+            title: `Task approved: ${updated.title}`,
+            body: `Task ID: ${updated.id}. Your work has been approved.`,
+            orchestrationId: updated.orchestrationId,
+            taskId: updated.id,
+          });
+        }
+      }
+
+      // Workload ledger: update work unit with review decision
+      if (updated.assignedAgentId) {
+        await updateWorkUnitOnReview(updated.id, updated.assignedAgentId, decision);
+      }
+      res.json(serializeTask(updated));
+    } catch (err) {
+      console.error('Review orchestration task error:', err);
+      res.status(500).json({ detail: 'Internal server error' });
+    }
+  },
+);
+
+router.patch(
+  '/v1/projects/:project_id/orchestrations/:orchestration_id/complete',
+  authenticateJwtOrAgentApiKey,
+  extractProjectId,
+  requirePermission(Permission.SendMessage),
+  async (req: Request, res: Response) => {
+    try {
+      const actor = getActor(req);
+      if (!actor) {
+        res.status(401).json({ detail: 'Authentication required' });
+        return;
+      }
+      const loaded = await loadOrchestrationWithTasks(req.params.project_id, req.params.orchestration_id);
+      if (!loaded) {
+        res.status(404).json({ detail: 'Orchestration not found' });
+        return;
+      }
+      if (!await ensureMainAgentOrUser(req, res, loaded.orchestration)) return;
+      if (loaded.tasks.length === 0 || !loaded.tasks.every((task) => task.status === ProjectOrchestrationTaskStatus.APPROVED)) {
+        res.status(409).json({ detail: 'All orchestration tasks must be approved before completion' });
+        return;
+      }
+
+      loaded.orchestration.status = ProjectOrchestrationStatus.COMPLETED;
+      loaded.orchestration.completedAt = new Date();
+
+      // ── MD artifact: TRACE.md ──────────────────────────────────────────
+      const summary = typeof req.body.summary === 'string' && req.body.summary.trim()
+        ? req.body.summary.trim()
+        : 'All worker tasks were approved by PM review.';
+      await AppDataSource.transaction(async (manager) => {
+        const tracePath = await writeTraceMd(manager, loaded.orchestration, loaded.tasks, summary);
+        setMdArtifactPaths(loaded.orchestration, { trace: tracePath });
+        await manager.getRepository(ProjectOrchestration).save(loaded.orchestration);
+
+        await appendCompletionReview(manager, loaded.orchestration, loaded.tasks, actor.actorId, summary);
+      });
+
+      // Notify participating worker agents of completion (before response, but non-fatal)
+      try {
+        for (const task of loaded.tasks) {
+          if (task.assignedAgentId && task.assignedAgentId !== loaded.orchestration.mainAgentId) {
+            await createInboxItem({
+              projectId: loaded.orchestration.projectId,
+              recipientAgentId: task.assignedAgentId,
+              eventType: 'orchestration_completed',
+              title: `Orchestration completed: ${loaded.orchestration.title}`,
+              body: 'The orchestration has been completed.',
+              payload: {
+                project_id: loaded.orchestration.projectId,
+                orchestration_id: loaded.orchestration.id,
+                task_id: task.id,
+              },
+            });
+          }
+        }
+      } catch (e) {
+        // ignore inbox failures
+      }
+
+      res.json(serializeOrchestration(loaded.orchestration, loaded.tasks));
+    } catch (err) {
+      console.error('Complete orchestration error:', err);
+      res.status(500).json({ detail: 'Internal server error' });
+    }
+  },
+);
+
+/**
+ * POST /v1/projects/:project_id/orchestrations/:orchestration_id/tasks/:task_id/reassign
+ * Main agent redirects a stalled task to a different worker. Cancels the old
+ * task and creates a fresh one (same goal/acceptance criteria) assigned to the
+ * new agent, then notifies the new worker and the PM. Enables "no-response
+ * reassignment" of unresponsive workers.
+ * Body: { new_agent_id: "<id>", reason?: "..." }
+ * RBAC: project-level main agent OR orchestration main agent (ensureMainAgentOrUser).
+ */
+router.post(
+  '/v1/projects/:project_id/orchestrations/:orchestration_id/tasks/:task_id/reassign',
+  authenticateJwtOrAgentApiKey,
+  extractProjectId,
+  requirePermission(Permission.SendMessage),
+  async (req: Request, res: Response) => {
+    try {
+      const projectId = req.params.project_id;
+      const orchestrationId = req.params.orchestration_id;
+      const taskId = req.params.task_id;
+      const newAgentId = typeof req.body.new_agent_id === 'string' ? req.body.new_agent_id.trim() : '';
+      const reason = typeof req.body.reason === 'string' ? req.body.reason.trim().slice(0, 1000) : null;
+      if (!newAgentId) {
+        res.status(422).json({ detail: 'new_agent_id is required' });
+        return;
+      }
+
+      const task = await loadTask(projectId, orchestrationId, taskId);
+      if (!task) {
+        res.status(404).json({ detail: 'Task not found' });
+        return;
+      }
+      if (!await ensureMainAgentOrUser(req, res, task.orchestration)) return;
+
+      const orchestration = task.orchestration;
+      // Cannot reassign a task that is already finished.
+      if (task.status === ProjectOrchestrationTaskStatus.APPROVED ||
+          task.status === ProjectOrchestrationTaskStatus.CANCELLED) {
+        res.status(409).json({ detail: `Cannot reassign a task in terminal status ${task.status}` });
+        return;
+      }
+      if (task.assignedAgentId === newAgentId) {
+        res.status(409).json({ detail: 'Task is already assigned to that agent' });
+        return;
+      }
+      // New worker must exist and be dispatchable (fresh heartbeat).
+      if (!await ensureAgentsExistAndDispatchable(res, projectId, [newAgentId])) return;
+
+      const actor = getActor(req);
+      if (!actor) {
+        res.status(401).json({ detail: 'Authentication required' });
+        return;
+      }
+      const newTaskId = randomUUID();
+
+      const result = await AppDataSource.transaction(async (manager) => {
+        // 1. Cancel the old task.
+        task.status = ProjectOrchestrationTaskStatus.CANCELLED;
+        task.metadata = { ...(task.metadata || {}), reassigned_to: newAgentId, reassign_reason: reason, reassigned_at: new Date().toISOString() };
+        await manager.save(ProjectOrchestrationTask, task);
+
+        // 2. Clone into a fresh dispatched task for the new worker.
+        const created = manager.create(ProjectOrchestrationTask, {
+          id: newTaskId,
+          projectId,
+          orchestrationId,
+          title: task.title,
+          goal: task.goal,
+          status: ProjectOrchestrationTaskStatus.DISPATCHED,
+          assignedAgentId: newAgentId,
+          workerTaskPath: `${orchestration.basePath}/workers/${newTaskId}.worker_task.md`,
+          workerContextPath: `${orchestration.basePath}/workers/${newTaskId}.worker_context.md`,
+          acceptanceCriteria: task.acceptanceCriteria ?? [],
+          dependsOn: task.dependsOn ?? [],
+          createdByUserId: actor.userId,
+          createdByAgentId: actor.agentId,
+          dispatchedAt: new Date(),
+          metadata: { reassigned_from: task.id },
+        });
+        await manager.save(ProjectOrchestrationTask, created);
+        await refreshTaskLedger(manager, orchestration, actor.actorId);
+        return created;
+      });
+
+      // 3. Notify the new worker (session + durable inbox).
+      await notifyAgentInSession({
+        projectId,
+        sessionId: orchestration.sessionId ?? null,
+        actorId: actor.actorId,
+        recipientAgentId: newAgentId,
+        content: [
+          `Task reassigned to you: ${result.title}`,
+          '',
+          `Task ID: ${result.id}`,
+          `Task file: ${result.workerTaskPath}`,
+          `Context file: ${result.workerContextPath}`,
+          reason ? `Reason: ${reason}` : '',
+          '',
+          'Read the task/context markdown, complete the work, then call the complete endpoint.',
+        ].filter(Boolean).join('\n'),
+        idempotencyKey: `orchestration:${orchestrationId}:task:${newTaskId}:reassign`,
+      });
+      await createInboxItem({
+        projectId,
+        recipientAgentId: newAgentId,
+        eventType: 'task_dispatched',
+        title: `Task reassigned to you: ${result.title}`,
+        body: [
+          `Task ID: ${result.id}${reason ? `. Reason: ${reason}` : ''}`,
+          `Goal: ${result.goal}`,
+          '',
+          '## Execution Steps',
+          '1. Ack: POST /v1/agent/inbox/<inbox_id>/ack',
+          '2. Claim: PATCH /v1/projects/<pid>/orchestrations/<oid>/tasks/<tid>/claim',
+          '3. Read context + do the work',
+          '4. Submit: POST .../tasks/<tid>/complete {"result_md":"...","evidence":{},"status":"ready_for_review"}',
+          '5. If changes_requested, fix and re-submit',
+          '',
+          'CLI: zz tasks claim → zz agent submit --result @result.md',
+          'Full guide: GET /v1/agent/execution-guide',
+        ].join('\n'),
+        orchestrationId,
+        taskId: newTaskId,
+      });
+      // 3b. Notify the OLD worker that their task was reassigned away.
+      if (task.assignedAgentId && task.assignedAgentId !== newAgentId) {
+        // Clear the original task_dispatched notification pointing at the now-
+        // cancelled task, so the old worker doesn't see a "ghost" dispatch that
+        // leads to claiming a dead task. (the "ghost notification" bug)
+        await ackInboxItemsForTask(task.assignedAgentId, task.id).catch((e: any) =>
+          console.error('Failed to ack old worker inbox on reassign:', e));
+        await createInboxItem({
+          projectId,
+          recipientAgentId: task.assignedAgentId,
+          eventType: 'task_cancelled',
+          title: `Task reassigned away: ${task.title}`,
+          body: `Task ${task.id} was reassigned to another agent${reason ? ` (reason: ${reason})` : ''}. No further action needed from you on this task.`,
+          orchestrationId,
+          taskId: task.id,
+        }).catch((e: any) => console.error('Failed to notify old worker of reassignment:', e));
+      }
+      // 4. Notify the PM that the reassignment landed.
+      if (orchestration.mainAgentId && orchestration.mainAgentId !== newAgentId) {
+        await createInboxItem({
+          projectId,
+          recipientAgentId: orchestration.mainAgentId,
+          eventType: 'task_reassigned',
+          title: `Task reassigned: ${result.title}`,
+          body: `Old task ${task.id} cancelled; new task ${result.id} assigned to ${newAgentId}.`,
+          orchestrationId,
+          taskId: newTaskId,
+        });
+      }
+
+      res.status(201).json(serializeTask(result));
+    } catch (err) {
+      console.error('Reassign task error:', err);
+      res.status(500).json({ detail: 'Internal server error' });
+    }
+  },
+);
+
+/**
+ * PATCH /v1/projects/:project_id/orchestrations/:orchestration_id/main-agent
+ * Switch the main agent for an orchestration.
+ * Validates the new main agent is in the project, active, and dispatchable.
+ * Body: { main_agent_id: "<new_main_agent_id>" }
+ */
+router.patch(
+  '/v1/projects/:project_id/orchestrations/:orchestration_id/main-agent',
+  authenticateJwtOrAgentApiKey,
+  extractProjectId,
+  requirePermission(Permission.SendMessage),
+  async (req: Request, res: Response) => {
+    try {
+      const { main_agent_id } = req.body;
+      if (!main_agent_id || typeof main_agent_id !== 'string') {
+        res.status(422).json({ detail: 'main_agent_id is required' });
+        return;
+      }
+
+      const loaded = await loadOrchestrationWithTasks(req.params.project_id, req.params.orchestration_id);
+      if (!loaded) {
+        res.status(404).json({ detail: 'Orchestration not found' });
+        return;
+      }
+
+      // Only current main agent or user can switch
+      if (!await ensureMainAgentOrUser(req, res, loaded.orchestration)) return;
+
+      // Completed orchestrations cannot switch main agent
+      if (loaded.orchestration.status === ProjectOrchestrationStatus.COMPLETED) {
+        res.status(409).json({ detail: 'Cannot switch main agent on a completed orchestration' });
+        return;
+      }
+
+      // Validate new main agent
+      const agentRepo = AppDataSource.getRepository(Agent);
+      const newMainAgent = await agentRepo.findOne({
+        where: { id: main_agent_id, projectId: req.params.project_id },
+      });
+      if (!newMainAgent) {
+        res.status(404).json({ detail: 'Agent not found in this project' });
+        return;
+      }
+
+      // Check lifecycle active
+      if (newMainAgent.lifecycleStatus !== AgentLifecycleStatus.ACTIVE) {
+        res.status(409).json({ detail: 'Agent must have active lifecycle status' });
+        return;
+      }
+
+      // Check dispatchable (online)
+      if (!getAgentPresence(newMainAgent).dispatchable) {
+        res.status(409).json({ detail: 'AGENT_NOT_ONLINE', agent_id: main_agent_id });
+        return;
+      }
+
+      loaded.orchestration.mainAgentId = main_agent_id;
+      await AppDataSource.getRepository(ProjectOrchestration).save(loaded.orchestration);
+
+      res.json(serializeOrchestration(loaded.orchestration, loaded.tasks));
+    } catch (err) {
+      console.error('Switch main agent error:', err);
+      res.status(500).json({ detail: 'Internal server error' });
+    }
+  },
+);
+
+async function createOrchestrationSession(
+  manager: EntityManager,
+  input: { projectId: string; title: string; createdBy: string; agentIds: string[] },
+): Promise<Session> {
+  const session = manager.create(Session, {
+    projectId: input.projectId,
+    title: input.title,
+    status: SessionStatus.ACTIVE,
+    createdBy: input.createdBy,
+  });
+  await manager.save(Session, session);
+
+  for (const agentId of input.agentIds) {
+    await manager.save(SessionParticipant, manager.create(SessionParticipant, {
+      sessionId: session.id,
+      agentId,
+    }));
+  }
+
+  return session;
+}
+
+async function upsertProjectFile(manager: EntityManager, input: ProjectFileUpsertInput): Promise<ProjectFile> {
+  // Delegate to the shared write core (single place for the future git `add`).
+  const { upsertProjectFileContent } = await import('../services/project-file.service');
+  const { file } = await upsertProjectFileContent(manager, {
+    projectId: input.projectId,
+    path: input.path,
+    content: input.content,
+    contentType: input.contentType,
+    message: input.message?.slice(0, 512) ?? null,
+    actorId: input.actorId,
+    maxFileBytes: MAX_FILE_BYTES,
+  });
+  return file;
+}
+
+async function refreshTaskLedger(
+  manager: EntityManager,
+  orchestration: ProjectOrchestration,
+  actorId: string,
+): Promise<void> {
+  const tasks = await manager.find(ProjectOrchestrationTask, {
+    where: { orchestrationId: orchestration.id },
+    order: { createdAt: 'ASC' },
+  });
+  await upsertProjectFile(manager, {
+    projectId: orchestration.projectId,
+    path: `${orchestration.basePath}/tasks.json`,
+    content: JSON.stringify(tasks.map(serializeTaskLedgerItem), null, 2) + '\n',
+    contentType: 'application/json',
+    actorId,
+    message: 'Refresh orchestration task ledger',
+  });
+}
+
+async function appendPmReview(
+  manager: EntityManager,
+  orchestration: ProjectOrchestration,
+  task: ProjectOrchestrationTask,
+  review: { decision: 'approved' | 'changes_requested'; notes: string; requestedChanges: string; actorId: string },
+): Promise<void> {
+  const path = `${orchestration.basePath}/pm-review.md`;
+  const existing = await manager.findOne(ProjectFile, { where: { projectId: orchestration.projectId, path } });
+  const previous = existing?.content && existing.content.trim() !== '# PM Review\n\nNo reviews yet.'
+    ? existing.content.trimEnd()
+    : '# PM Review';
+  const entry = [
+    '',
+    `## ${new Date().toISOString()} - ${review.decision}`,
+    '',
+    `- Task: ${task.title} (${task.id})`,
+    `- Status: ${task.status}`,
+    review.notes ? `- Notes: ${review.notes}` : null,
+    review.requestedChanges ? `- Requested changes: ${review.requestedChanges}` : null,
+    '',
+  ].filter((line) => line !== null).join('\n');
+
+  await upsertProjectFile(manager, {
+    projectId: orchestration.projectId,
+    path,
+    content: `${previous}\n${entry}`,
+    actorId: review.actorId,
+    message: `PM review ${task.id}`,
+  });
+}
+
+async function appendCompletionReview(
+  manager: EntityManager,
+  orchestration: ProjectOrchestration,
+  tasks: ProjectOrchestrationTask[],
+  actorId: string,
+  summary: unknown,
+): Promise<void> {
+  const path = `${orchestration.basePath}/pm-review.md`;
+  const existing = await manager.findOne(ProjectFile, { where: { projectId: orchestration.projectId, path } });
+  const previous = existing?.content && existing.content.trim() !== '# PM Review\n\nNo reviews yet.'
+    ? existing.content.trimEnd()
+    : '# PM Review';
+  const summaryText = typeof summary === 'string' && summary.trim()
+    ? summary.trim()
+    : 'All worker tasks were approved by PM review.';
+  const entry = [
+    '',
+    `## ${new Date().toISOString()} - completed`,
+    '',
+    `- Orchestration: ${orchestration.id}`,
+    `- Summary: ${summaryText}`,
+    '',
+    '### Approved Tasks',
+    '',
+    ...tasks.map((task) => `- ${task.title} (${task.id})`),
+    '',
+  ].join('\n');
+
+  await upsertProjectFile(manager, {
+    projectId: orchestration.projectId,
+    path,
+    content: `${previous}\n${entry}`,
+    actorId,
+    message: 'Complete orchestration',
+  });
+}
+
+async function notifyAgentInSession(input: {
+  projectId: string;
+  sessionId: string | null;
+  actorId: string;
+  recipientAgentId: string | null;
+  content: string;
+  idempotencyKey: string;
+}): Promise<void> {
+  if (!input.sessionId) return;
+
+  let recipientParticipantIds: string[] | undefined;
+  let visibility: MessageVisibility | undefined;
+  if (input.recipientAgentId) {
+    const participant = await AppDataSource.getRepository(SessionParticipant).findOne({
+      where: { sessionId: input.sessionId, agentId: input.recipientAgentId },
+    });
+    if (participant) {
+      recipientParticipantIds = [participant.id];
+      visibility = MessageVisibility.DIRECT;
+    }
+  }
+
+  await dispatchService.createUserMessage({
+    projectId: input.projectId,
+    sessionId: input.sessionId,
+    userId: input.actorId,
+    content: input.content,
+    contentType: 'text/markdown',
+    recipientParticipantIds,
+    visibility,
+    dispatchTtl: 1,
+    idempotencyKey: input.idempotencyKey,
+  });
+}
+
+async function ensureAgentsExistAndDispatchable(
+  res: Response,
+  projectId: string,
+  agentIds: string[],
+): Promise<boolean> {
+  const uniqueAgentIds = [...new Set(agentIds)];
+  if (uniqueAgentIds.length === 0) return true;
+  const agents = await AppDataSource.getRepository(Agent).find({
+    where: { projectId, id: In(uniqueAgentIds) },
+  });
+  const foundIds = new Set(agents.map((agent) => agent.id));
+  const missingAgentIds = uniqueAgentIds.filter((agentId) => !foundIds.has(agentId));
+  if (missingAgentIds.length > 0) {
+    res.status(404).json({
+      detail: 'One or more agents were not found in this project',
+      code: 'AGENT_NOT_FOUND',
+      missing_agent_ids: missingAgentIds,
+    });
+    return false;
+  }
+
+  const presenceByAgent = agents.map((agent) => ({ agent, presence: getAgentPresence(agent) }));
+  const offlineAgentIds = presenceByAgent
+    .filter((item) => !item.presence.dispatchable)
+    .map((item) => item.agent.id);
+  if (offlineAgentIds.length > 0) {
+    res.status(409).json({
+      detail: 'One or more agents are offline or stale. Dispatch requires a fresh heartbeat.',
+      code: 'AGENT_NOT_ONLINE',
+      offline_agent_ids: offlineAgentIds,
+      heartbeat_ttl_seconds: Math.floor((presenceByAgent[0]?.presence.onlineTtlMs ?? 90_000) / 1000),
+    });
+    return false;
+  }
+
+  return true;
+}
+
+async function loadOrchestration(projectId: string, orchestrationId: string): Promise<ProjectOrchestration | null> {
+  return AppDataSource.getRepository(ProjectOrchestration).findOne({
+    where: { id: orchestrationId, projectId },
+  });
+}
+
+async function loadOrchestrationWithTasks(
+  projectId: string,
+  orchestrationId: string,
+): Promise<{ orchestration: ProjectOrchestration; tasks: ProjectOrchestrationTask[] } | null> {
+  const orchestration = await loadOrchestration(projectId, orchestrationId);
+  if (!orchestration) return null;
+  const tasks = await AppDataSource.getRepository(ProjectOrchestrationTask).find({
+    where: { projectId, orchestrationId },
+    order: { createdAt: 'ASC' },
+  });
+  return { orchestration, tasks };
+}
+
+async function loadTask(
+  projectId: string,
+  orchestrationId: string,
+  taskId: string,
+): Promise<ProjectOrchestrationTask | null> {
+  return AppDataSource.getRepository(ProjectOrchestrationTask).findOne({
+    where: { id: taskId, projectId, orchestrationId },
+    relations: ['orchestration'],
+  });
+}
+
+async function loadProjectTask(
+  projectId: string,
+  taskId: string,
+): Promise<ProjectOrchestrationTask | null> {
+  return AppDataSource.getRepository(ProjectOrchestrationTask).findOne({
+    where: { id: taskId, projectId },
+    relations: ['orchestration'],
+  });
+}
+
+async function canViewProjectTask(task: ProjectOrchestrationTask, agentId: string): Promise<boolean> {
+  if (task.assignedAgentId === agentId) return true;
+  if (task.orchestration.mainAgentId === agentId) return true;
+  const assignedTaskCount = await AppDataSource.getRepository(ProjectOrchestrationTask).count({
+    where: { orchestrationId: task.orchestrationId, assignedAgentId: agentId },
+  });
+  return assignedTaskCount > 0;
+}
+
+function canViewOrchestration(
+  req: Request,
+  orchestration: ProjectOrchestration,
+  tasks: ProjectOrchestrationTask[],
+): boolean {
+  if (!req.agent) return true;
+  return orchestration.mainAgentId === req.agent.id || tasks.some((task) => task.assignedAgentId === req.agent?.id);
+}
+
+/**
+ * Is the calling agent the project-level main agent?
+ * Project-level main agent (projects.main_agent_id) acts as PM across ALL
+ * orchestrations in the project, in addition to per-orchestration main agents.
+ * Cached on req for the request lifetime to avoid repeated DB hits.
+ */
+async function isProjectMainAgent(req: Request, projectId: string): Promise<boolean> {
+  if (!req.agent) return false;
+  const cache = (req as any)._projectMainAgentCache as Map<string, boolean> | undefined;
+  if (cache && cache.has(projectId)) return cache.get(projectId)!;
+  const project = await AppDataSource.getRepository(Project).findOne({
+    where: { id: projectId },
+    select: ['id', 'mainAgentId'],
+  });
+  const result = !!project && project.mainAgentId === req.agent!.id;
+  const map = cache ?? new Map<string, boolean>();
+  map.set(projectId, result);
+  (req as any)._projectMainAgentCache = map;
+  return result;
+}
+
+/**
+ * PM gate: passes for JWT users, the orchestration's main agent, OR the
+ * project-level main agent. (Project-level was added so a single "set main
+ * agent" makes one agent PM across the whole project, not per-orchestration.)
+ */
+async function ensureMainAgentOrUser(
+  req: Request,
+  res: Response,
+  orchestration: ProjectOrchestration,
+): Promise<boolean> {
+  if (!req.agent) return true;
+  if (orchestration.mainAgentId === req.agent.id) return true;
+  if (await isProjectMainAgent(req, orchestration.projectId)) return true;
+  res.status(403).json({ detail: 'Only the main agent can perform PM review or dispatch tasks' });
+  return false;
+}
+
+function ensureAssignedWorkerOrUser(req: Request, res: Response, task: ProjectOrchestrationTask): boolean {
+  if (!req.agent) return true;
+  if (task.assignedAgentId && task.assignedAgentId !== req.agent.id) {
+    res.status(403).json({ detail: 'Only the assigned worker agent can perform this task action' });
+    return false;
+  }
+  if (!task.assignedAgentId && task.orchestration.mainAgentId === req.agent.id) {
+    res.status(403).json({ detail: 'Main agent cannot claim an unassigned worker task' });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Create a changeset representing a worker's task completion, so the project/orchestration
+ * main agent can review + merge the deliverable via the standard changeset flow.
+ *
+ * Minimal/declarative: the actual file (RESULT.md) was already written by the complete
+ * handler before this is called; here we record a changeset row that references it
+ * (with base_revision_id so merge's conflict check passes) plus result_path/evidence_path,
+ * and link it to orchestration+task so `canReviewChangeset` admits the main agent.
+ *
+ * Best-effort by design — failures are logged, not thrown (the completion already succeeded).
+ */
+async function createTaskCompletionChangeset(
+  manager: EntityManager,
+  input: {
+    projectId: string;
+    task: ProjectOrchestrationTask;
+    actor: { userId: string | null; agentId: string | null; actorId: string };
+    resultMdPath: string;
+    resultMdContent: string;
+    legacyResultPath: string;
+    legacyEvidencePath: string;
+  },
+): Promise<ProjectChangeset | null> {
+  const { projectId, task, actor, resultMdPath, resultMdContent, legacyResultPath, legacyEvidencePath } = input;
+
+  // Resolve (or lazily create) the default branch. A fresh project may have no
+  // branch yet (branches are created on first versioning op); create a 'main'
+  // default here so the deliverable changeset has a merge target. Mirrors
+  // versioning's ensureDefaultBranchInTransaction.
+  const branchRepo = manager.getRepository(ProjectBranch);
+  let branch = await branchRepo.findOne({ where: { projectId, isDefault: true } });
+  if (!branch) {
+    branch = await branchRepo.findOne({ where: { projectId, name: 'main' } });
+    if (branch) {
+      branch.isDefault = true;
+      branch = await branchRepo.save(branch);
+    } else {
+      branch = await branchRepo.save(branchRepo.create({
+        projectId,
+        name: 'main',
+        isDefault: true,
+        createdByUserId: actor.userId,
+        createdByAgentId: actor.agentId,
+      }));
+    }
+  }
+
+  // base_revision_id for the RESULT.md file (already written above) so merge sees no conflict.
+  const resultFile = await manager.getRepository(ProjectFile).findOne({
+    where: { projectId, path: resultMdPath },
+  });
+  const baseRevisionId = resultFile?.currentRevisionId ?? null;
+
+  const changeset = manager.create(ProjectChangeset, {
+    projectId,
+    branchId: branch.id,
+    baseCommitId: branch.headCommitId ?? null,
+    title: `Task deliverable: ${task.title}`,
+    description: `Auto-created on task ${task.id} completion. Review and merge to accept the worker's deliverable.`,
+    status: ProjectChangesetStatus.SUBMITTED,
+    fileOps: [
+      {
+        op: 'upsert',
+        path: resultMdPath,
+        content: resultMdContent.endsWith('\n') ? resultMdContent : `${resultMdContent}\n`,
+        base_revision_id: baseRevisionId,
+      },
+    ],
+    resultPath: legacyResultPath,
+    evidencePath: legacyEvidencePath,
+    createdByUserId: actor.userId,
+    createdByAgentId: actor.agentId ?? task.assignedAgentId ?? null,
+    orchestrationId: task.orchestrationId,
+    taskId: task.id,
+  });
+  return manager.save(ProjectChangeset, changeset);
+}
+
+function getActor(req: Request): { userId: string | null; agentId: string | null; actorId: string } | null {
+  if (req.user?.userId) {
+    return { userId: req.user.userId, agentId: null, actorId: req.user.userId };
+  }
+  if (req.agent?.id) {
+    return { userId: null, agentId: req.agent.id, actorId: req.agent.id };
+  }
+  return null;
+}
+
+function renderGoalMd(orchestration: ProjectOrchestration): string {
+  return [
+    `# ${orchestration.title}`,
+    '',
+    '## Objective',
+    '',
+    orchestration.objective,
+    '',
+    '## Acceptance Criteria',
+    '',
+    ...(orchestration.acceptanceCriteria?.length
+      ? orchestration.acceptanceCriteria.map((item) => `- ${item}`)
+      : ['- PM review approves all worker tasks.']),
+    '',
+    '## Protocol',
+    '',
+    '- PM/main agent owns analysis, planning, dispatch, review, and final acceptance.',
+    '- Worker agents read `.worker_task.md` and `.worker_context.md`, then submit `result.md` and `evidence.json` through the task complete API.',
+    '- PM requests changes until every task is approved, then completes the orchestration.',
+    '',
+  ].join('\n');
+}
+
+function renderPlanMd(plan: string): string {
+  return plan
+    ? `# Plan\n\n${plan}\n`
+    : '# Plan\n\nPending PM breakdown.\n';
+}
+
+function renderWorkerTaskMd(
+  orchestration: ProjectOrchestration,
+  task: ProjectOrchestrationTask,
+  scope: unknown,
+): string {
+  const scopeText = typeof scope === 'string' && scope.trim() ? scope.trim() : 'Use the task goal and context. Keep changes scoped.';
+  return [
+    `# Worker Task: ${task.title}`,
+    '',
+    `- Orchestration: ${orchestration.id}`,
+    `- Task ID: ${task.id}`,
+    task.assignedAgentId ? `- Assigned Agent: ${task.assignedAgentId}` : '- Assigned Agent: unassigned',
+    '',
+    '## Goal',
+    '',
+    task.goal,
+    '',
+    '## Scope',
+    '',
+    scopeText,
+    '',
+    '## Acceptance Criteria',
+    '',
+    ...(task.acceptanceCriteria?.length ? task.acceptanceCriteria.map((item) => `- ${item}`) : ['- Result satisfies the task goal.', '- Evidence explains how it was verified.']),
+    '',
+    '## Completion Contract',
+    '',
+    '- Submit `result_md` with concise implementation notes and changed artifacts.',
+    '- Submit `evidence` as JSON with commands, outputs, links, or review notes.',
+    '- If blocked, submit status `blocked` with evidence.reason.',
+    '',
+  ].join('\n');
+}
+
+function renderWorkerContextMd(
+  orchestration: ProjectOrchestration,
+  task: ProjectOrchestrationTask,
+  context: unknown,
+  gitHead?: string | null,
+): string {
+  const contextText = typeof context === 'string' && context.trim()
+    ? context.trim()
+    : 'No extra context was supplied. Use project files, memories, and session messages as source of truth.';
+  return [
+    `# Worker Context: ${task.title}`,
+    '',
+    `- Project ID: ${task.projectId}`,
+    `- Orchestration ID: ${orchestration.id}`,
+    `- Goal file: ${orchestration.basePath}/goal.md`,
+    `- Plan file: ${orchestration.basePath}/plan.md`,
+    `- Task ledger: ${orchestration.basePath}/tasks.json`,
+    gitHead ? `- **Git HEAD (baseline):** \`${gitHead}\` — the project is at this real git commit when this task was dispatched. Reference it in your work for provenance.` : '',
+    '',
+    '## Context',
+    '',
+    contextText,
+    '',
+    '## Delivery Contract',
+    '',
+    'Deliver your work through these channels:',
+    '',
+    '- **成品文件 (finished artifacts):** `zz agent deliver <local-file>` uploads a file to `deliverables/<your-agent-name>/`. Use this for documents, code, reports.',
+    '- **进展更新 (progress notes):** `zz agent progress ' + task.id + ' --note "..."` appends a progress entry. Use this to log what you did.',
+    '- **提交任务结果 (submit task result):** `zz agent submit --result @./result.md` submits the task. `--result` can reference a local file with `@`.',
+    '- **正式变更 (reviewed changes):** `zz changesets create --file-ops @ops.json --task ' + task.id + '` proposes file changes that the PM/main agent must review and merge. Use this for changes to shared project files.',
+    '',
+    '## Git & Versioning',
+    '',
+    'This project is a **real git repository**. Your changeset merges become true git commits:',
+    '',
+    '- When the PM merges your changeset, the platform creates a real git commit (40-hex SHA). This is real git history, not a simulation.',
+    '- Verify your contribution landed: `zz git log --project ' + task.projectId + '` (shows real commits) or `zz git head --project ' + task.projectId + '` (current HEAD SHA).',
+    '- **deliver ≠ changeset:** `deliver` puts files in `deliverables/` (your reports/artifacts). `changesets` proposes edits to shared/core files → reviewed → merged → real git commit. Use the right one.',
+    '- If a Git gateway is enabled, `GET /v1/projects/' + task.projectId + '/git/remote` returns a `clone_url` you can `git clone` and `git push`.',
+    '',
+    '> Files you deliver land in `deliverables/<your-agent-name>/` and are visible in the project workspace. Changes to shared/core files MUST go through changesets (merge → git commit). Do not write outside `deliverables/` directly.',
+    '',
+  ].join('\n');
+}
+
+function serializeOrchestration(orchestration: ProjectOrchestration, tasks?: ProjectOrchestrationTask[]) {
+  const artifacts = orchestration.metadata
+    ? (orchestration.metadata as Record<string, unknown>).md_artifacts as Record<string, string> | undefined
+    : undefined;
+  return {
+    id: orchestration.id,
+    project_id: orchestration.projectId,
+    title: orchestration.title,
+    objective: orchestration.objective,
+    status: orchestration.status,
+    base_path: orchestration.basePath,
+    session_id: orchestration.sessionId ?? null,
+    main_agent_id: orchestration.mainAgentId ?? null,
+    created_by_user_id: orchestration.createdByUserId ?? null,
+    created_by_agent_id: orchestration.createdByAgentId ?? null,
+    acceptance_criteria: orchestration.acceptanceCriteria ?? [],
+    metadata: orchestration.metadata ?? {},
+    paths: {
+      goal: `${orchestration.basePath}/goal.md`,
+      plan: `${orchestration.basePath}/plan.md`,
+      tasks: `${orchestration.basePath}/tasks.json`,
+      pm_review: `${orchestration.basePath}/pm-review.md`,
+      workers: `${orchestration.basePath}/workers/`,
+      trace: artifacts?.trace ?? null,
+    },
+    completed_at: orchestration.completedAt ?? null,
+    created_at: orchestration.createdAt,
+    updated_at: orchestration.updatedAt,
+    tasks: tasks ? tasks.map(serializeTask) : undefined,
+  };
+}
+
+function serializeTask(task: ProjectOrchestrationTask) {
+  const artifacts = task.metadata
+    ? (task.metadata as Record<string, unknown>).md_artifacts as Record<string, string> | undefined
+    : undefined;
+  return {
+    id: task.id,
+    project_id: task.projectId,
+    orchestration_id: task.orchestrationId,
+    title: task.title,
+    goal: task.goal,
+    status: task.status,
+    assigned_agent_id: task.assignedAgentId ?? null,
+    worker_task_path: task.workerTaskPath,
+    worker_context_path: task.workerContextPath,
+    result_path: task.resultPath ?? null,
+    evidence_path: task.evidencePath ?? null,
+    acceptance_criteria: task.acceptanceCriteria ?? [],
+    depends_on: task.dependsOn ?? [],
+    review_notes: task.reviewNotes ?? null,
+    requested_changes: task.requestedChanges ?? null,
+    created_by_user_id: task.createdByUserId ?? null,
+    created_by_agent_id: task.createdByAgentId ?? null,
+    dispatched_at: task.dispatchedAt ?? null,
+    claimed_at: task.claimedAt ?? null,
+    completed_at: task.completedAt ?? null,
+    reviewed_at: task.reviewedAt ?? null,
+    created_at: task.createdAt,
+    updated_at: task.updatedAt,
+    md_artifacts: artifacts ?? null,
+  };
+}
+
+function serializeTaskLedgerItem(task: ProjectOrchestrationTask) {
+  const artifacts = task.metadata
+    ? (task.metadata as Record<string, unknown>).md_artifacts as Record<string, string> | undefined
+    : undefined;
+  return {
+    id: task.id,
+    title: task.title,
+    status: task.status,
+    assigned_agent_id: task.assignedAgentId ?? null,
+    worker_task_path: task.workerTaskPath,
+    worker_context_path: task.workerContextPath,
+    result_path: task.resultPath ?? null,
+    evidence_path: task.evidencePath ?? null,
+    acceptance_criteria: task.acceptanceCriteria ?? [],
+    depends_on: task.dependsOn ?? [],
+    review_notes: task.reviewNotes ?? null,
+    requested_changes: task.requestedChanges ?? null,
+    dispatched_at: task.dispatchedAt ?? null,
+    claimed_at: task.claimedAt ?? null,
+    completed_at: task.completedAt ?? null,
+    reviewed_at: task.reviewedAt ?? null,
+    md_artifacts: artifacts ?? null,
+  };
+}
+
+type ProjectTaskRelatedChanges = {
+  relatedChangesets: ProjectChangeset[];
+  relatedCommits: ProjectCommit[];
+};
+
+type TaskLabel = {
+  key: string;
+  value: string | boolean;
+};
+
+type TaskTimelineEvent = {
+  type: string;
+  at: string;
+  actor_id?: string | null;
+  detail?: Record<string, unknown>;
+};
+
+function getTaskStatusGroup(status: ProjectOrchestrationTaskStatus): string {
+  if (
+    status === ProjectOrchestrationTaskStatus.PENDING ||
+    status === ProjectOrchestrationTaskStatus.DISPATCHED ||
+    status === ProjectOrchestrationTaskStatus.RUNNING ||
+    status === ProjectOrchestrationTaskStatus.CHANGES_REQUESTED
+  ) {
+    return 'open';
+  }
+  if (status === ProjectOrchestrationTaskStatus.READY_FOR_REVIEW) {
+    return 'ready_for_review';
+  }
+  if (status === ProjectOrchestrationTaskStatus.BLOCKED || status === ProjectOrchestrationTaskStatus.FAILED) {
+    return 'blocked_failed';
+  }
+  if (status === ProjectOrchestrationTaskStatus.APPROVED || status === ProjectOrchestrationTaskStatus.CANCELLED) {
+    return 'completed';
+  }
+  return 'unknown';
+}
+
+function getTaskReviewState(status: ProjectOrchestrationTaskStatus): string | null {
+  if (status === ProjectOrchestrationTaskStatus.APPROVED) return 'approved';
+  if (status === ProjectOrchestrationTaskStatus.CHANGES_REQUESTED) return 'changes_requested';
+  if (status === ProjectOrchestrationTaskStatus.READY_FOR_REVIEW) return 'under_review';
+  return null;
+}
+
+function deriveTaskLabels(task: ProjectOrchestrationTask, related?: ProjectTaskRelatedChanges): TaskLabel[] {
+  const labels: TaskLabel[] = [
+    { key: 'status', value: task.status },
+    { key: 'status_group', value: getTaskStatusGroup(task.status) },
+  ];
+
+  if (task.assignedAgentId) {
+    labels.push({ key: 'assigned_agent', value: task.assignedAgentId });
+  } else {
+    labels.push({ key: 'assignment', value: 'unassigned' });
+  }
+
+  if (task.orchestration) {
+    labels.push({ key: 'batch', value: task.orchestration.id });
+    labels.push({ key: 'batch_label', value: task.orchestration.title });
+  }
+
+  const reviewState = getTaskReviewState(task.status);
+  if (reviewState) {
+    labels.push({ key: 'review_state', value: reviewState });
+  }
+
+  labels.push({ key: 'has_dependencies', value: (task.dependsOn?.length ?? 0) > 0 });
+  labels.push({ key: 'has_acceptance_criteria', value: (task.acceptanceCriteria?.length ?? 0) > 0 });
+  labels.push({ key: 'has_result', value: Boolean(task.resultPath) });
+  labels.push({ key: 'has_evidence', value: Boolean(task.evidencePath) });
+  labels.push({ key: 'has_review_notes', value: Boolean(task.reviewNotes) });
+  labels.push({ key: 'has_requested_changes', value: Boolean(task.requestedChanges) });
+
+  if (related) {
+    labels.push({ key: 'has_related_changesets', value: related.relatedChangesets.length > 0 });
+    labels.push({ key: 'has_related_commits', value: related.relatedCommits.length > 0 });
+  }
+
+  return labels;
+}
+
+function deriveTaskTimeline(task: ProjectOrchestrationTask, related?: ProjectTaskRelatedChanges): TaskTimelineEvent[] {
+  const events: TaskTimelineEvent[] = [
+    {
+      type: 'created',
+      at: task.createdAt.toISOString(),
+      actor_id: task.createdByAgentId ?? task.createdByUserId ?? null,
+    },
+  ];
+
+  if (task.dispatchedAt) {
+    events.push({ type: 'dispatched', at: task.dispatchedAt.toISOString() });
+  }
+  if (task.claimedAt) {
+    events.push({ type: 'claimed', at: task.claimedAt.toISOString(), actor_id: task.assignedAgentId ?? null });
+  }
+  if (task.completedAt) {
+    events.push({ type: 'completed', at: task.completedAt.toISOString(), actor_id: task.assignedAgentId ?? null });
+  }
+  if (task.reviewedAt) {
+    const decision = getTaskReviewState(task.status);
+    events.push({
+      type: 'reviewed',
+      at: task.reviewedAt.toISOString(),
+      detail: decision ? { decision } : undefined,
+    });
+  }
+
+  if (related) {
+    for (const changeset of related.relatedChangesets) {
+      if (changeset.reviewedAt) {
+        events.push({
+          type: 'review_linked',
+          at: changeset.reviewedAt.toISOString(),
+          actor_id: changeset.reviewedByAgentId ?? changeset.reviewedByUserId ?? null,
+          detail: { changeset_id: changeset.id, status: changeset.status },
+        });
+      } else {
+        events.push({
+          type: 'changeset_linked',
+          at: changeset.createdAt.toISOString(),
+          actor_id: changeset.createdByAgentId ?? changeset.createdByUserId ?? null,
+          detail: { changeset_id: changeset.id, status: changeset.status },
+        });
+      }
+    }
+    for (const commit of related.relatedCommits) {
+      events.push({
+        type: 'commit_linked',
+        at: commit.createdAt.toISOString(),
+        actor_id: commit.createdByAgentId ?? commit.createdByUserId ?? null,
+        detail: { commit_id: commit.id, changeset_id: commit.changesetId ?? null },
+      });
+    }
+  }
+
+  events.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+  return events;
+}
+
+async function loadProjectTaskRelatedChanges(projectId: string, taskId: string): Promise<ProjectTaskRelatedChanges> {
+  const [relatedChangesets, relatedCommits] = await Promise.all([
+    AppDataSource.getRepository(ProjectChangeset).find({
+      where: { projectId, taskId },
+      order: { updatedAt: 'DESC' },
+      take: 20,
+    }),
+    AppDataSource.getRepository(ProjectCommit).find({
+      where: { projectId, taskId },
+      order: { createdAt: 'DESC' },
+      take: 20,
+    }),
+  ]);
+  return { relatedChangesets, relatedCommits };
+}
+
+function serializeProjectTaskRow(task: ProjectOrchestrationTask, related?: ProjectTaskRelatedChanges) {
+  return {
+    ...serializeTask(task),
+    orchestration_title: task.orchestration.title,
+    orchestration_status: task.orchestration.status,
+    orchestration_base_path: task.orchestration.basePath,
+    orchestration_main_agent_id: task.orchestration.mainAgentId ?? null,
+    labels: deriveTaskLabels(task, related),
+    timeline: deriveTaskTimeline(task, related),
+    ...(related ? {
+      related_changesets: related.relatedChangesets.map(serializeRelatedChangeset),
+      related_commits: related.relatedCommits.map(serializeRelatedCommit),
+    } : {}),
+  };
+}
+
+function serializeRelatedChangeset(changeset: ProjectChangeset) {
+  return {
+    id: changeset.id,
+    project_id: changeset.projectId,
+    branch_id: changeset.branchId,
+    title: changeset.title,
+    status: changeset.status,
+    file_count: Array.isArray(changeset.fileOps) ? changeset.fileOps.length : 0,
+    merged_commit_id: changeset.mergedCommitId ?? null,
+    orchestration_id: changeset.orchestrationId ?? null,
+    task_id: changeset.taskId ?? null,
+    reviewed_at: changeset.reviewedAt ?? null,
+    merged_at: changeset.mergedAt ?? null,
+    created_at: changeset.createdAt,
+    updated_at: changeset.updatedAt,
+  };
+}
+
+function serializeRelatedCommit(commit: ProjectCommit) {
+  return {
+    id: commit.id,
+    project_id: commit.projectId,
+    branch_id: commit.branchId,
+    parent_commit_id: commit.parentCommitId ?? null,
+    message: commit.message,
+    changed_files: commit.changedFiles,
+    changeset_id: commit.changesetId ?? null,
+    orchestration_id: commit.orchestrationId ?? null,
+    task_id: commit.taskId ?? null,
+    created_at: commit.createdAt,
+  };
+}
+
+function parseStatusFilter(value: unknown): string[] {
+  if (typeof value !== 'string' || !value.trim()) return [];
+  return value.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+function parsePagination(limitParam: unknown, offsetParam: unknown): { limit: number; offset: number } {
+  const DEFAULT_LIMIT = 50;
+  const MAX_LIMIT = 200;
+  let limit = DEFAULT_LIMIT;
+  let offset = 0;
+
+  if (typeof limitParam === 'string') {
+    const parsed = parseInt(limitParam, 10);
+    if (!Number.isNaN(parsed)) {
+      limit = Math.max(1, Math.min(MAX_LIMIT, parsed));
+    }
+  }
+  if (typeof offsetParam === 'string') {
+    const parsed = parseInt(offsetParam, 10);
+    if (!Number.isNaN(parsed)) {
+      offset = Math.max(0, parsed);
+    }
+  }
+
+  return { limit, offset };
+}
+
+const ALLOWED_SORTS = ['updated', 'created', 'status'] as const;
+type TaskSort = (typeof ALLOWED_SORTS)[number];
+
+function parseSort(value: unknown): TaskSort {
+  if (typeof value === 'string' && ALLOWED_SORTS.includes(value as TaskSort)) {
+    return value as TaskSort;
+  }
+  return 'updated';
+}
+
+function applyTaskSort(qb: SelectQueryBuilder<ProjectOrchestrationTask>, sort: TaskSort) {
+  if (sort === 'created') {
+    qb.orderBy('task.createdAt', 'DESC');
+  } else if (sort === 'status') {
+    qb.orderBy('task.status', 'ASC').addOrderBy('task.updatedAt', 'DESC');
+  } else {
+    qb.orderBy('task.updatedAt', 'DESC');
+  }
+}
+
+function escapeLikePattern(value: string): string {
+  return value.replace(/!/g, '!!').replace(/%/g, '!%').replace(/_/g, '!_');
+}
+
+function buildSummary(statusCountRows: { status: ProjectOrchestrationTaskStatus; count: string }[]) {
+  const statusCounts: Record<string, number> = {};
+  let open = 0;
+  let readyForReview = 0;
+  let blockedFailed = 0;
+  let completed = 0;
+
+  for (const row of statusCountRows) {
+    const count = parseInt(row.count, 10);
+    statusCounts[row.status] = count;
+
+    if (
+      row.status === ProjectOrchestrationTaskStatus.PENDING ||
+      row.status === ProjectOrchestrationTaskStatus.DISPATCHED ||
+      row.status === ProjectOrchestrationTaskStatus.RUNNING ||
+      row.status === ProjectOrchestrationTaskStatus.CHANGES_REQUESTED
+    ) {
+      open += count;
+    } else if (row.status === ProjectOrchestrationTaskStatus.READY_FOR_REVIEW) {
+      readyForReview += count;
+    } else if (
+      row.status === ProjectOrchestrationTaskStatus.BLOCKED ||
+      row.status === ProjectOrchestrationTaskStatus.FAILED
+    ) {
+      blockedFailed += count;
+    } else if (
+      row.status === ProjectOrchestrationTaskStatus.APPROVED ||
+      row.status === ProjectOrchestrationTaskStatus.CANCELLED
+    ) {
+      completed += count;
+    }
+  }
+
+  return {
+    status_counts: statusCounts,
+    tabs: {
+      open,
+      ready_for_review: readyForReview,
+      blocked_failed: blockedFailed,
+      completed,
+    },
+    total: Object.values(statusCounts).reduce((sum, c) => sum + c, 0),
+  };
+}
+
+const MAX_ASSIGNEE_SUMMARY = 20;
+const MAX_ORCHESTRATION_SUMMARY = 20;
+
+async function buildAssigneeSummary(
+  baseQb: SelectQueryBuilder<ProjectOrchestrationTask>,
+): Promise<
+  Array<{
+    assigned_agent_id: string | null;
+    display_name: string;
+    total: number;
+    open: number;
+    review: number;
+    done: number;
+  }>
+> {
+  const openStatuses = [
+    ProjectOrchestrationTaskStatus.PENDING,
+    ProjectOrchestrationTaskStatus.DISPATCHED,
+    ProjectOrchestrationTaskStatus.RUNNING,
+    ProjectOrchestrationTaskStatus.CHANGES_REQUESTED,
+  ];
+  const reviewStatus = ProjectOrchestrationTaskStatus.READY_FOR_REVIEW;
+  const doneStatuses = [ProjectOrchestrationTaskStatus.APPROVED, ProjectOrchestrationTaskStatus.CANCELLED];
+
+  const qb = baseQb.clone();
+  qb.leftJoin('agents', 'agent', 'agent.id = task.assignedAgentId')
+    .select('task.assignedAgentId', 'assigned_agent_id')
+    .addSelect("COALESCE(MAX(agent.name), 'Unassigned')", 'display_name')
+    .addSelect('COUNT(*)', 'total')
+    .addSelect(
+      'SUM(CASE WHEN task.status IN (:...openStatuses) THEN 1 ELSE 0 END)',
+      'open',
+    )
+    .addSelect(
+      'SUM(CASE WHEN task.status = :reviewStatus THEN 1 ELSE 0 END)',
+      'review',
+    )
+    .addSelect(
+      'SUM(CASE WHEN task.status IN (:...doneStatuses) THEN 1 ELSE 0 END)',
+      'done',
+    )
+    .setParameter('openStatuses', openStatuses)
+    .setParameter('reviewStatus', reviewStatus)
+    .setParameter('doneStatuses', doneStatuses)
+    .groupBy('task.assignedAgentId')
+    .orderBy('total', 'DESC')
+    .addOrderBy('task.assignedAgentId', 'ASC')
+    .take(MAX_ASSIGNEE_SUMMARY);
+
+  const rows = (await qb.getRawMany()) as Array<{
+    assigned_agent_id: string | null;
+    display_name: string;
+    total: string;
+    open: string;
+    review: string;
+    done: string;
+  }>;
+
+  return rows.map((row) => ({
+    assigned_agent_id: row.assigned_agent_id ?? null,
+    display_name: row.display_name,
+    total: parseInt(row.total, 10),
+    open: parseInt(row.open, 10),
+    review: parseInt(row.review, 10),
+    done: parseInt(row.done, 10),
+  }));
+}
+
+async function buildOrchestrationSummary(
+  baseQb: SelectQueryBuilder<ProjectOrchestrationTask>,
+): Promise<
+  Array<{
+    orchestration_id: string;
+    title: string;
+    total: number;
+  }>
+> {
+  const qb = baseQb.clone();
+  qb.select('task.orchestrationId', 'orchestration_id')
+    .addSelect('MAX(orchestration.title)', 'title')
+    .addSelect('COUNT(*)', 'total')
+    .groupBy('task.orchestrationId')
+    .orderBy('total', 'DESC')
+    .addOrderBy('task.orchestrationId', 'ASC')
+    .take(MAX_ORCHESTRATION_SUMMARY);
+
+  const rows = (await qb.getRawMany()) as Array<{
+    orchestration_id: string;
+    title: string;
+    total: string;
+  }>;
+
+  return rows.map((row) => ({
+    orchestration_id: row.orchestration_id,
+    title: row.title,
+    total: parseInt(row.total, 10),
+  }));
+}
+
+const MAX_BATCH_SUMMARY = 50;
+const MAX_TIMELINE_BUCKETS = 30;
+
+async function buildBatchSummary(
+  baseQb: SelectQueryBuilder<ProjectOrchestrationTask>,
+): Promise<
+  Array<{
+    batch_key: string;
+    batch_label: string;
+    orchestration_id: string;
+    total: number;
+    open: number;
+    review: number;
+    blocked_failed: number;
+    completed: number;
+    first_created_at: string;
+    last_updated_at: string;
+  }>
+> {
+  const openStatuses = [
+    ProjectOrchestrationTaskStatus.PENDING,
+    ProjectOrchestrationTaskStatus.DISPATCHED,
+    ProjectOrchestrationTaskStatus.RUNNING,
+    ProjectOrchestrationTaskStatus.CHANGES_REQUESTED,
+  ];
+  const reviewStatus = ProjectOrchestrationTaskStatus.READY_FOR_REVIEW;
+  const blockedFailedStatuses = [ProjectOrchestrationTaskStatus.BLOCKED, ProjectOrchestrationTaskStatus.FAILED];
+  const completedStatuses = [ProjectOrchestrationTaskStatus.APPROVED, ProjectOrchestrationTaskStatus.CANCELLED];
+
+  const qb = baseQb.clone();
+  qb.select('task.orchestrationId', 'orchestration_id')
+    .addSelect('MAX(orchestration.title)', 'batch_label')
+    .addSelect('COUNT(*)', 'total')
+    .addSelect(
+      'SUM(CASE WHEN task.status IN (:...openStatuses) THEN 1 ELSE 0 END)',
+      'open',
+    )
+    .addSelect(
+      'SUM(CASE WHEN task.status = :reviewStatus THEN 1 ELSE 0 END)',
+      'review',
+    )
+    .addSelect(
+      'SUM(CASE WHEN task.status IN (:...blockedFailedStatuses) THEN 1 ELSE 0 END)',
+      'blocked_failed',
+    )
+    .addSelect(
+      'SUM(CASE WHEN task.status IN (:...completedStatuses) THEN 1 ELSE 0 END)',
+      'completed',
+    )
+    .addSelect('MIN(task.createdAt)', 'first_created_at')
+    .addSelect('MAX(task.updatedAt)', 'last_updated_at')
+    .setParameter('openStatuses', openStatuses)
+    .setParameter('reviewStatus', reviewStatus)
+    .setParameter('blockedFailedStatuses', blockedFailedStatuses)
+    .setParameter('completedStatuses', completedStatuses)
+    .groupBy('task.orchestrationId')
+    .orderBy('MAX(task.updatedAt)', 'DESC')
+    .addOrderBy('task.orchestrationId', 'ASC')
+    .take(MAX_BATCH_SUMMARY);
+
+  const rows = (await qb.getRawMany()) as Array<{
+    orchestration_id: string;
+    batch_label: string;
+    total: string;
+    open: string;
+    review: string;
+    blocked_failed: string;
+    completed: string;
+    first_created_at: string | Date;
+    last_updated_at: string | Date;
+  }>;
+
+  return rows.map((row) => ({
+    batch_key: `orchestration:${row.orchestration_id}`,
+    batch_label: row.batch_label,
+    orchestration_id: row.orchestration_id,
+    total: parseInt(row.total, 10),
+    open: parseInt(row.open, 10),
+    review: parseInt(row.review, 10),
+    blocked_failed: parseInt(row.blocked_failed, 10),
+    completed: parseInt(row.completed, 10),
+    first_created_at: parseDateValue(row.first_created_at).toISOString(),
+    last_updated_at: parseDateValue(row.last_updated_at).toISOString(),
+  }));
+}
+
+async function buildTimelineSummary(
+  baseQb: SelectQueryBuilder<ProjectOrchestrationTask>,
+): Promise<
+  Array<{
+    date: string;
+    created: number;
+    updated: number;
+    completed: number;
+    review_ready: number;
+  }>
+> {
+  const qb = baseQb.clone();
+  qb.select('task.createdAt', 'created_at')
+    .addSelect('task.updatedAt', 'updated_at')
+    .addSelect('task.completedAt', 'completed_at')
+    .addSelect('task.status', 'status');
+
+  const rows = (await qb.getRawMany()) as Array<{
+    created_at: string | Date | null;
+    updated_at: string | Date | null;
+    completed_at: string | Date | null;
+    status: ProjectOrchestrationTaskStatus;
+  }>;
+
+  const buckets = new Map<
+    string,
+    { created: number; updated: number; completed: number; review_ready: number }
+  >();
+
+  for (const row of rows) {
+    const createdDate = row.created_at ? toISODate(row.created_at) : null;
+    const updatedDate = row.updated_at ? toISODate(row.updated_at) : null;
+    const completedDate = row.completed_at ? toISODate(row.completed_at) : null;
+
+    if (createdDate) {
+      const bucket = buckets.get(createdDate) ?? { created: 0, updated: 0, completed: 0, review_ready: 0 };
+      bucket.created += 1;
+      buckets.set(createdDate, bucket);
+    }
+    if (updatedDate) {
+      const bucket = buckets.get(updatedDate) ?? { created: 0, updated: 0, completed: 0, review_ready: 0 };
+      bucket.updated += 1;
+      buckets.set(updatedDate, bucket);
+    }
+    if (completedDate) {
+      const bucket = buckets.get(completedDate) ?? { created: 0, updated: 0, completed: 0, review_ready: 0 };
+      bucket.completed += 1;
+      if (row.status === ProjectOrchestrationTaskStatus.READY_FOR_REVIEW) {
+        bucket.review_ready += 1;
+      }
+      buckets.set(completedDate, bucket);
+    }
+  }
+
+  const result = Array.from(buckets.entries())
+    .map(([date, counts]) => ({
+      date,
+      created: counts.created,
+      updated: counts.updated,
+      completed: counts.completed,
+      review_ready: counts.review_ready,
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  return result.slice(0, MAX_TIMELINE_BUCKETS);
+}
+
+function toISODate(date: string | Date): string {
+  return parseDateValue(date).toISOString().slice(0, 10);
+}
+
+function parseDateValue(value: string | Date): Date {
+  if (value instanceof Date) return value;
+  return new Date(value);
+}
+
+function normalizeRequiredString(
+  value: unknown,
+  field: string,
+  maxLength: number,
+): { ok: true; value: string } | { ok: false; error: string } {
+  if (typeof value !== 'string' || !value.trim()) {
+    return { ok: false, error: `${field} is required` };
+  }
+  return { ok: true, value: value.trim().slice(0, maxLength) };
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0))]
+    .map((item) => item.trim());
+}
+
+function normalizeEvidence(value: unknown): Record<string, unknown> {
+  if (isPlainObject(value)) return value;
+  if (typeof value === 'string' && value.trim()) return { summary: value.trim() };
+  return {};
+}
+
+function normalizeCompletionStatus(value: unknown): ProjectOrchestrationTaskStatus | null {
+  if (value === undefined || value === null || value === '') {
+    return ProjectOrchestrationTaskStatus.READY_FOR_REVIEW;
+  }
+  if (
+    value === ProjectOrchestrationTaskStatus.READY_FOR_REVIEW ||
+    value === ProjectOrchestrationTaskStatus.BLOCKED ||
+    value === ProjectOrchestrationTaskStatus.FAILED
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function validateProjectPath(value: unknown): { ok: true; value: string } | { ok: false; error: string } {
+  if (typeof value !== 'string') {
+    return { ok: false, error: 'path is required and must be a string' };
+  }
+  const path = value.trim().replace(/\\/g, '/');
+  if (!path || path.length > 1024) {
+    return { ok: false, error: 'path must be 1-1024 characters' };
+  }
+  if (path.startsWith('/') || path.includes('//') || path.split('/').includes('..')) {
+    return { ok: false, error: 'path must be relative and cannot contain .. or empty segments' };
+  }
+  return { ok: true, value: path };
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.trim().replace(/\/+$/g, '');
+}
+
+function normalizeContentType(value: unknown): string {
+  if (value === 'text/plain' || value === 'application/json' || value === 'text/markdown') {
+    return value;
+  }
+  return 'text/markdown';
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function sha256(content: string): string {
+  return crypto.createHash('sha256').update(content).digest('hex');
+}
+
+export default router;

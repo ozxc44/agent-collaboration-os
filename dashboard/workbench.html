@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>工作台 — Agent Collaboration OS</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef2f6; --panel: #ffffff; --panel-2: #f8fafc;
+      --line: #d7dee8; --line-strong: #b6c1cf;
+      --text: #182230; --muted: #61708a; --soft: #7c8aa1;
+      --accent: #2563eb; --accent-strong: #1d4ed8;
+      --good: #047857; --warn: #b45309; --bad: #b91c1c;
+      --shadow: 0 2px 8px rgba(24,34,48,.06);
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 Inter,system-ui,-apple-system,sans-serif; }
+    button { border:0; cursor:pointer; font:inherit; }
+    button:disabled { opacity:.5; cursor:default; }
+    a { color:var(--accent); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+
+    /* Nav bar */
+    .navbar { background:var(--panel); border-bottom:1px solid var(--line); display:flex; align-items:center; gap:16px; padding:0 24px; height:52px; position:sticky; top:0; z-index:10; }
+    .navbar-brand { font-weight:700; font-size:15px; display:flex; align-items:center; gap:8px; }
+    .navbar-brand .dot { width:10px; height:10px; border-radius:50%; background:var(--accent); }
+    .navbar-nav { display:flex; gap:2px; flex:1; }
+    .nav-link { padding:6px 14px; border-radius:6px; font-size:13px; color:var(--muted); cursor:pointer; }
+    .nav-link:hover { background:var(--panel-2); color:var(--text); }
+    .nav-link.active { background:var(--accent); color:#fff; }
+    .navbar-right { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
+
+    /* Layout */
+    .page { max-width:1200px; margin:0 auto; padding:24px; }
+    .grid { display:grid; grid-template-columns:2fr 1fr; gap:16px; }
+    @media(max-width:768px){ .grid { grid-template-columns:1fr; } }
+
+    /* Cards */
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; box-shadow:var(--shadow); margin-bottom:16px; }
+    .card-title { font-size:13px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; }
+    .card-title a { font-size:12px; font-weight:400; text-transform:none; }
+
+    /* Status banner */
+    .status-banner { display:flex; align-items:center; gap:12px; padding:16px 20px; border-radius:10px; margin-bottom:16px; }
+    .status-banner.healthy { background:#ecfdf5; border:1px solid #a7f3d0; }
+    .status-banner.warning { background:#fffbeb; border:1px solid #fde68a; }
+    .status-banner.danger { background:#fef2f2; border:1px solid #fecaca; }
+    .status-icon { font-size:28px; }
+    .status-text h2 { margin:0; font-size:18px; }
+    .status-text p { margin:2px 0 0; font-size:13px; color:var(--muted); }
+
+    /* Agent row */
+    .agent-row { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); }
+    .agent-row:last-child { border-bottom:none; }
+    .agent-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+    .agent-dot.online { background:var(--good); }
+    .agent-dot.offline { background:var(--soft); }
+    .agent-name { font-weight:600; font-size:13px; }
+    .agent-role { font-size:11px; color:var(--muted); background:var(--panel-2); padding:1px 6px; border-radius:4px; }
+    .agent-task { font-size:12px; color:var(--muted); margin-left:auto; }
+
+    /* Approval row */
+    .approval-row { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); }
+    .approval-row:last-child { border-bottom:none; }
+    .approval-type { font-size:11px; padding:2px 8px; border-radius:4px; font-weight:600; white-space:nowrap; }
+    .approval-type.cs { background:#dbeafe; color:#1e40af; }
+    .approval-type.join { background:#fef3c7; color:#92400e; }
+    .approval-title { font-size:13px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .approval-actions { display:flex; gap:4px; }
+
+    /* Buttons */
+    .btn { display:inline-flex; align-items:center; gap:4px; padding:5px 12px; border-radius:6px; font-size:12px; font-weight:500; }
+    .btn-primary { background:var(--accent); color:#fff; }
+    .btn-primary:hover { background:var(--accent-strong); }
+    .btn-good { background:var(--good); color:#fff; }
+    .btn-ghost { background:transparent; color:var(--muted); border:1px solid var(--line); }
+    .btn-ghost:hover { background:var(--panel-2); }
+    .btn-sm { padding:3px 8px; font-size:11px; }
+
+    /* Activity timeline */
+    .activity-item { display:flex; gap:10px; padding:6px 0; font-size:12px; }
+    .activity-time { color:var(--soft); white-space:nowrap; min-width:60px; }
+    .activity-text { color:var(--text); }
+    .activity-text .meta { color:var(--muted); }
+
+    /* Risk badge */
+    .risk-badge { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; }
+    .risk-badge.warn { background:#fef3c7; color:#92400e; }
+    .risk-badge.bad { background:#fee2e2; color:#991b1b; }
+
+    /* Auth */
+    .auth-overlay { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:100; }
+    .auth-card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:32px; width:360px; box-shadow:var(--shadow); }
+    .auth-card h2 { margin:0 0 16px; font-size:18px; }
+    .auth-card input { width:100%; padding:8px 12px; border:1px solid var(--line); border-radius:6px; margin-bottom:12px; font-size:14px; }
+    .hidden { display:none !important; }
+    .empty { text-align:center; color:var(--soft); padding:24px; font-size:13px; }
+  </style>
+</head>
+<body>
+
+<!-- Auth overlay -->
+<div id="authOverlay" class="auth-overlay">
+  <div class="auth-card">
+    <h2>🔐 登录工作台</h2>
+    <input id="authEmail" type="text" placeholder="邮箱" autocomplete="username">
+    <input id="authPassword" type="password" placeholder="密码" autocomplete="current-password">
+    <button class="btn btn-primary" id="loginBtn" style="width:100%;justify-content:center;padding:10px;">登录 / 注册</button>
+    <p style="font-size:12px;color:var(--muted);text-align:center;margin-top:12px;">登录后选择项目进入工作台</p>
+  </div>
+</div>
+
+<!-- Main app -->
+<div id="app" class="hidden">
+  <!-- Navbar -->
+  <div class="navbar">
+    <div class="navbar-brand"><span class="dot"></span> Agent Collaboration OS</div>
+    <div class="navbar-nav">
+      <span class="nav-link active">工作台</span>
+      <a class="nav-link" href="tasks.html">任务</a>
+      <a class="nav-link" href="repository.html">项目空间</a>
+      <a class="nav-link" href="agents.html">Agent</a>
+      <a class="nav-link" href="approvals.html">审批</a>
+    </div>
+    <div class="navbar-right">
+      <select id="projectSelect" style="font-size:12px;padding:3px 8px;border:1px solid var(--line);border-radius:4px;"></select>
+      <span id="userLabel"></span>
+    </div>
+  </div>
+
+  <div class="page">
+    <!-- Status banner -->
+    <div id="statusBanner"></div>
+
+    <div class="grid">
+      <!-- Left column: approvals + activity -->
+      <div>
+        <!-- Pending approvals -->
+        <div class="card">
+          <div class="card-title">
+            待我审批
+            <a href="approvals.html">全部 →</a>
+          </div>
+          <div id="approvalsList"><div class="empty">加载中…</div></div>
+        </div>
+
+        <!-- Recent activity -->
+        <div class="card">
+          <div class="card-title">最近活动</div>
+          <div id="activityList"><div class="empty">加载中…</div></div>
+        </div>
+      </div>
+
+      <!-- Right column: agents + risks -->
+      <div>
+        <!-- Online agents -->
+        <div class="card">
+          <div class="card-title">
+            Agent 状态
+            <a href="agents.html">管理 →</a>
+          </div>
+          <div id="agentsList"><div class="empty">加载中…</div></div>
+        </div>
+
+        <!-- Risks -->
+        <div class="card">
+          <div class="card-title">风险提示</div>
+          <div id="risksList"><div class="empty">加载中…</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var STORAGE_KEY = 'zz_runtime_dashboard_v1';
+  var BASE_URL = (window.location.origin + window.location.pathname.replace(/[^/]*$/, '')).replace(/\/$/, '');
+  var API = BASE_URL.replace(/\/agent$/, '') + '/agent';
+  var state = { jwt: '', projectId: '', projects: [], user: null };
+
+  // ── Storage ──
+  function loadStore() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
+  }
+  function saveStore() { localStorage.setItem(STORAGE_KEY, JSON.stringify({ jwt: state.jwt, selectedProjectId: state.projectId })); }
+
+  // ── API ──
+  function api(method, path, body) {
+    var opts = { method: method, headers: { 'Content-Type': 'application/json' } };
+    if (state.jwt) opts.headers.Authorization = 'Bearer ' + state.jwt;
+    if (body) opts.body = JSON.stringify(body);
+    return fetch(API + '/v1' + path, opts).then(function(r) {
+      if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+      return r.json();
+    });
+  }
+
+  // ── Auth ──
+  function tryAutoLogin() {
+    var s = loadStore();
+    state.jwt = s.jwt || '';
+    state.projectId = s.selectedProjectId || '';
+    if (!state.jwt) { showAuth(); return; }
+    api('GET', '/auth/me').then(function(u) {
+      state.user = u;
+      document.getElementById('userLabel').textContent = u.display_name || u.email || u.username || '';
+      loadProjects();
+    }).catch(function() { showAuth(); });
+  }
+
+  function showAuth() {
+    document.getElementById('authOverlay').classList.remove('hidden');
+    document.getElementById('app').classList.add('hidden');
+  }
+  function showApp() {
+    document.getElementById('authOverlay').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+  }
+
+  document.getElementById('loginBtn').addEventListener('click', function() {
+    var email = document.getElementById('authEmail').value.trim();
+    var pw = document.getElementById('authPassword').value;
+    if (!email || !pw) return;
+    fetch(API + '/v1/auth/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, password: pw })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+      if (d.access_token) {
+        state.jwt = d.access_token;
+        state.user = d.user;
+        saveStore();
+        document.getElementById('userLabel').textContent = (d.user && (d.user.display_name || d.user.email)) || '';
+        loadProjects();
+      } else { alert('登录失败: ' + (d.detail || '未知错误')); }
+    }).catch(function(e) { alert('登录失败: ' + e.message); });
+  });
+
+  // ── Projects ──
+  function loadProjects() {
+    api('GET', '/projects?limit=100').then(function(res) {
+      var items = res.data || res || [];
+      state.projects = items;
+      var sel = document.getElementById('projectSelect');
+      sel.innerHTML = items.map(function(p) {
+        return '<option value="' + p.id + '"' + (p.id === state.projectId ? ' selected' : '') + '>' + esc(p.name) + '</option>';
+      }).join('');
+      if (!state.projectId && items.length) { state.projectId = items[0].id; saveStore(); }
+      if (state.projectId) { sel.value = state.projectId; loadDashboard(); }
+      showApp();
+    }).catch(function() { showAuth(); });
+  }
+
+  document.getElementById('projectSelect').addEventListener('change', function(e) {
+    state.projectId = e.target.value; saveStore(); loadDashboard();
+  });
+
+  // ── Dashboard data ──
+  function loadDashboard() {
+    var pid = state.projectId;
+    // Load: agents, changesets, join-requests, orchestrations/tasks (in parallel)
+    Promise.all([
+      api('GET', '/projects/' + pid + '/agents?limit=100').catch(function(){ return {data:[]}; }),
+      api('GET', '/projects/' + pid + '/changesets?limit=10&status=submitted').catch(function(){ return {data:[]}; }),
+      api('GET', '/projects/' + pid + '/join-requests?status=pending').catch(function(){ return {data:[]}; }),
+      api('GET', '/projects/' + pid + '/orchestration-tasks?limit=20').catch(function(){ return {data:[]}; }),
+    ]).then(function(results) {
+      renderAgents(results[0].data || []);
+      renderApprovals(results[1].data || [], results[2].data || []);
+      renderRisks(results[3].data || []);
+      renderStatus(results[0].data || [], results[3].data || []);
+      renderActivity(results[3].data || []);
+    });
+  }
+
+  // ── Render: status banner ──
+  function renderStatus(agents, tasks) {
+    var online = agents.filter(function(a) { return a.presence === 'online' || a.is_online; });
+    var failed = tasks.filter(function(t) { return t.status === 'failed' || t.status === 'blocked'; });
+    var stale = tasks.filter(function(t) { return (t.metadata && t.metadata.stale); });
+    var cls = 'healthy', icon = '✅', msg = '一切正常';
+    if (failed.length > 0) { cls = 'danger'; icon = '🔴'; msg = failed.length + ' 个任务失败/阻塞'; }
+    else if (stale.length > 0) { cls = 'warning'; icon = '🟡'; msg = stale.length + ' 个任务可能停滞'; }
+    var html = '<div class="status-banner ' + cls + '">';
+    html += '<div class="status-icon">' + icon + '</div>';
+    html += '<div class="status-text"><h2>' + msg + '</h2>';
+    html += '<p>' + online.length + '/' + agents.length + ' Agent 在线 · ' + tasks.length + ' 个任务</p>';
+    html += '</div></div>';
+    document.getElementById('statusBanner').innerHTML = html;
+  }
+
+  // ── Render: agents ──
+  function renderAgents(agents) {
+    if (!agents.length) { document.getElementById('agentsList').innerHTML = '<div class="empty">暂无 Agent</div>'; return; }
+    // Sort: online first
+    agents.sort(function(a,b) { return (b.is_online?1:0) - (a.is_online?1:0); });
+    var html = agents.slice(0, 8).map(function(a) {
+      var online = a.presence === 'online' || a.is_online;
+      var role = a.lifecycle_status === 'active' ? '活跃' : a.lifecycle_status || '';
+      var task = a.current_task_title || '';
+      var dotCls = online ? 'online' : 'offline';
+      var h = '<div class="agent-row">';
+      h += '<span class="agent-dot ' + dotCls + '"></span>';
+      h += '<span class="agent-name">' + esc(a.name) + '</span>';
+      if (role) h += '<span class="agent-role">' + esc(role) + '</span>';
+      if (task) h += '<span class="agent-task">' + esc(task.slice(0,30)) + '</span>';
+      h += '</div>';
+      return h;
+    }).join('');
+    if (agents.length > 8) html += '<div style="text-align:center;font-size:12px;color:var(--muted);padding:8px;">+' + (agents.length - 8) + ' 更多…</div>';
+    document.getElementById('agentsList').innerHTML = html;
+  }
+
+  // ── Render: approvals ──
+  function renderApprovals(changesets, joinReqs) {
+    var items = [];
+    changesets.forEach(function(cs) {
+      items.push({ type: 'cs', id: cs.id, title: cs.title || 'Untitled changeset', detail: (cs.file_ops||[]).length + ' files' });
+    });
+    joinReqs.forEach(function(jr) {
+      items.push({ type: 'join', id: jr.id, title: jr.requested_role || 'member', detail: jr.note || '加入申请' });
+    });
+    if (!items.length) { document.getElementById('approvalsList').innerHTML = '<div class="empty">✅ 没有待审批事项</div>'; return; }
+    var html = items.map(function(item) {
+      var typeCls = item.type === 'cs' ? 'cs' : 'join';
+      var typeLabel = item.type === 'cs' ? 'Changeset' : '加入申请';
+      var h = '<div class="approval-row">';
+      h += '<span class="approval-type ' + typeCls + '">' + typeLabel + '</span>';
+      h += '<span class="approval-title">' + esc(item.title) + ' <span style="color:var(--soft);font-size:11px;">' + esc(item.detail) + '</span></span>';
+      h += '<div class="approval-actions">';
+      h += '<a class="btn btn-ghost btn-sm" href="approvals.html">查看</a>';
+      h += '</div>';
+      h += '</div>';
+      return h;
+    }).join('');
+    document.getElementById('approvalsList').innerHTML = html;
+  }
+
+  // ── Render: risks ──
+  function renderRisks(tasks) {
+    var risks = [];
+    tasks.forEach(function(t) {
+      if (t.status === 'failed') risks.push({ level: 'bad', text: '任务失败: ' + (t.title||t.id.slice(0,8)) });
+      if (t.status === 'blocked') risks.push({ level: 'warn', text: '任务阻塞: ' + (t.title||t.id.slice(0,8)) });
+      if (t.metadata && t.metadata.stale) risks.push({ level: 'warn', text: '任务停滞: ' + (t.title||t.id.slice(0,8)) });
+    });
+    if (!risks.length) { document.getElementById('risksList').innerHTML = '<div class="empty">✅ 无风险</div>'; return; }
+    var html = risks.map(function(r) {
+      return '<div style="padding:6px 0;"><span class="risk-badge ' + r.level + '">' + (r.level==='bad'?'🔴':'🟡') + '</span> <span style="font-size:12px;">' + esc(r.text) + '</span></div>';
+    }).join('');
+    document.getElementById('risksList').innerHTML = html;
+  }
+
+  // ── Render: activity ──
+  function renderActivity(tasks) {
+    var sorted = tasks.slice().sort(function(a,b) { return new Date(b.updated_at||b.created_at) - new Date(a.updated_at||a.created_at); });
+    if (!sorted.length) { document.getElementById('activityList').innerHTML = '<div class="empty">暂无活动</div>'; return; }
+    var html = sorted.slice(0, 6).map(function(t) {
+      var time = new Date(t.updated_at || t.created_at).toLocaleString('zh-CN', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+      var statusMap = { dispatched:'已派发', running:'执行中', ready_for_review:'待验收', approved:'已通过', changes_requested:'需修改', failed:'失败', blocked:'阻塞' };
+      var st = statusMap[t.status] || t.status;
+      return '<div class="activity-item"><span class="activity-time">' + esc(time) + '</span><span class="activity-text">' + esc(t.title||'任务') + ' <span class="meta">→ ' + esc(st) + '</span></span></div>';
+    }).join('');
+    document.getElementById('activityList').innerHTML = html;
+  }
+
+  // ── Utils ──
+  function esc(s) { if (!s) return ''; var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+  // ── Init ──
+  tryAutoLogin();
+})();
+</script>
+</body>
+</html>

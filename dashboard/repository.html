@@ -1,0 +1,1801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Repository — Agent Collaboration OS</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --panel-2: #f8fafc;
+      --line: #dde3ec;
+      --line-strong: #b8c4d4;
+      --text: #172033;
+      --muted: #5f6f88;
+      --soft: #8896aa;
+      --accent: #2563eb;
+      --accent-strong: #1d4ed8;
+      --good: #047857;
+      --warn: #b45309;
+      --bad: #b91c1c;
+      --shadow: 0 10px 26px rgba(23, 32, 51, 0.07);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    button, input, select { font: inherit; }
+    button { border: 0; cursor: pointer; background: none; color: inherit; }
+    button:disabled { cursor: not-allowed; opacity: 0.55; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      font-weight: 800;
+      color: var(--text);
+    }
+    .brand:hover { text-decoration: none; }
+
+    .brand-mark {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      font-size: 15px;
+      flex: none;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    /* Clone panel (Gitea-style HTTPS URL box) */
+    .clone-panel {
+      background: var(--bg-elevated, #fff);
+      border-bottom: 1px solid var(--border, #e1e4e8);
+      padding: 12px 24px;
+    }
+    .clone-panel.hidden { display: none; }
+    .clone-panel-inner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .clone-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted, #6a737d);
+      padding: 4px 8px;
+      background: var(--bg-subtle, #f6f8fa);
+      border-radius: 4px;
+    }
+    .clone-url-input {
+      flex: 1;
+      min-width: 280px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 13px;
+      padding: 6px 10px;
+      border: 1px solid var(--border, #e1e4e8);
+      border-radius: 6px;
+      background: var(--bg-subtle, #f6f8fa);
+      color: var(--text, #24292e);
+    }
+    .clone-hint {
+      max-width: 900px;
+      margin: 6px auto 0;
+      font-size: 12px;
+      color: var(--text-muted, #6a737d);
+      font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+
+    /* Import wizard modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+    .modal-overlay.hidden { display: none; }
+    .modal-card { background: var(--bg-elevated, #fff); border-radius: 12px; max-width: 640px; width: 90%; max-height: 85vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,.2); }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border, #e1e4e8); }
+    .modal-close { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--text-muted, #6a737d); }
+    .modal-body { padding: 20px; }
+    .import-desc { color: var(--text-muted, #6a737d); font-size: 14px; line-height: 1.6; }
+    .import-dropzone { border: 2px dashed var(--border, #d0d7de); border-radius: 8px; padding: 32px; text-align: center; margin: 16px 0; cursor: pointer; transition: border-color .2s; }
+    .import-dropzone.drag-over { border-color: var(--accent, #0969da); background: var(--bg-subtle, #f6f8fa); }
+    .import-dropzone p { margin: 6px 0; }
+    .import-note { font-size: 12px; color: var(--text-muted, #6a737d); }
+    .import-summary { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .pill-good { background: #dcfce7; color: #166534; }
+    .import-risks { background: #fef9c3; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 13px; }
+    .import-risks ul { margin: 4px 0 0; padding-left: 18px; }
+    .import-filelist { max-height: 240px; overflow-y: auto; border: 1px solid var(--border, #e1e4e8); border-radius: 6px; padding: 8px 12px; }
+    .import-filelist ul { list-style: none; padding: 0; margin: 0; font-family: ui-monospace, monospace; font-size: 13px; }
+    .import-filelist li { padding: 2px 0; }
+    .file-size { color: var(--text-muted, #6a737d); font-size: 11px; }
+    .tag { background: var(--bg-subtle, #f6f8fa); border-radius: 3px; padding: 1px 5px; font-size: 10px; color: var(--text-muted, #6a737d); }
+    .import-ignored { margin-top: 12px; font-size: 13px; }
+    .import-ignored ul { font-family: ui-monospace, monospace; font-size: 12px; }
+    .muted { color: var(--text-muted, #6a737d); }
+    .import-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+    .import-mode { font-size: 13px; display: flex; align-items: center; gap: 4px; }
+    .import-success { padding: 16px; background: #dcfce7; border-radius: 8px; line-height: 1.6; }
+    .error { color: var(--bad, #cf222e); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--line-strong);
+      background: var(--panel);
+      color: var(--text);
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }
+    .btn-ghost { background: transparent; }
+
+    .page {
+      width: min(1080px, 100%);
+      margin: 0 auto;
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    /* ── Repo header ── */
+    .repo-header-body { padding: 18px; }
+
+    .repo-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .repo-owner { color: var(--muted); font-weight: 700; }
+    .repo-sep { color: var(--soft); }
+    .repo-name {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 800;
+      word-break: break-word;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--line-strong);
+      background: var(--panel-2);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .pill.vis-public { color: var(--good); border-color: #a7e9c8; background: #ecfdf5; }
+    .pill.vis-private { color: var(--muted); border-color: var(--line-strong); background: var(--panel-2); }
+    .pill.license { color: var(--muted); }
+    .pill.draft { color: var(--warn); border-color: #fcd9a4; background: #fffbeb; }
+    .pill.prerelease { color: var(--accent); border-color: #bcd2ff; background: #eff5ff; }
+
+    .repo-desc {
+      margin: 10px 0 0;
+      color: var(--text);
+      max-width: 80ch;
+    }
+    .repo-desc.empty { color: var(--soft); font-style: italic; }
+
+    .repo-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 12px;
+    }
+    .topic-chip {
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: var(--accent-strong);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .repo-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .lang-bar {
+      display: flex;
+      height: 8px;
+      min-width: 180px;
+      flex: 1 1 260px;
+      max-width: 420px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: var(--line);
+    }
+    .lang-seg { height: 100%; }
+
+    .lang-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+      width: 100%;
+      margin-top: 8px;
+    }
+    .lang-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .lang-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 2px;
+      display: inline-block;
+    }
+    .meta-block { width: 100%; }
+
+    /* ── Toolbar ── */
+    .repo-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 10px 14px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+    }
+
+    .branch-select {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--panel-2);
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .branch-select select { border: 0; background: transparent; font-weight: 700; max-width: 220px; }
+
+    .path-crumb {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .path-crumb a { color: var(--accent); font-weight: 600; }
+    .path-crumb .crumb-sep { color: var(--soft); }
+
+    /* ── Sub-nav ── */
+    .repo-subnav {
+      display: flex;
+      gap: 2px;
+      padding: 0 6px;
+      border-bottom: 1px solid var(--line);
+      overflow-x: auto;
+    }
+    .subnav-tab {
+      padding: 10px 14px;
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--muted);
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+    }
+    .subnav-tab:hover { color: var(--text); }
+    .subnav-tab[aria-selected="true"] {
+      color: var(--text);
+      border-bottom-color: var(--accent);
+    }
+
+    /* ── View content ── */
+    .repo-content { padding: 0; }
+    .view { padding: 18px; min-width: 0; }
+    .view.hidden { display: none; }
+
+    .view-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .view-title { font-weight: 800; font-size: 15px; }
+    .view-sub { color: var(--muted); font-size: 13px; }
+
+    .state {
+      padding: 28px 18px;
+      text-align: center;
+      color: var(--muted);
+    }
+    .state .state-icon { font-size: 26px; opacity: 0.7; }
+    .state .state-title { font-weight: 700; color: var(--text); margin-top: 6px; }
+    .state .state-hint { font-size: 13px; margin-top: 4px; }
+    .state.error .state-title { color: var(--bad); }
+
+    /* ── Overview ── */
+    .overview-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 240px;
+      gap: 18px;
+      align-items: start;
+    }
+    @media (max-width: 760px) { .overview-grid { grid-template-columns: 1fr; } }
+
+    .readme-body { min-width: 0; }
+    .readme-body h1, .readme-body h2, .readme-body h3 { border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-top: 18px; }
+    .readme-body pre {
+      background: #0f172a; color: #e2e8f0; padding: 12px; border-radius: 8px;
+      overflow-x: auto; font-size: 13px; line-height: 1.5;
+    }
+    .readme-body code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+    .readme-body p code, .readme-body li code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line); }
+    .readme-body img { max-width: 100%; }
+    .readme-body blockquote { border-left: 3px solid var(--line-strong); margin: 0; padding: 2px 12px; color: var(--muted); }
+    .readme-body table { border-collapse: collapse; }
+    .readme-body th, .readme-body td { border: 1px solid var(--line); padding: 5px 9px; }
+
+    .sidebar-stats { display: grid; gap: 10px; }
+    .stat-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: var(--panel-2);
+    }
+    .stat-card .stat-label { font-size: 12px; color: var(--muted); font-weight: 600; }
+    .stat-card .stat-value { font-weight: 800; font-size: 15px; margin-top: 2px; word-break: break-word; }
+
+    .recent-list { list-style: none; margin: 0; padding: 0; }
+    .recent-list li {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--line);
+      font-size: 13px;
+    }
+    .recent-list li:last-child { border-bottom: 0; }
+    .recent-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
+    .recent-meta { color: var(--soft); font-size: 12px; }
+
+    /* ── Files ── */
+    .files-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .tree-table { width: 100%; border-collapse: collapse; }
+    .tree-table th, .tree-table td {
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+      vertical-align: middle;
+    }
+    .tree-table th { color: var(--muted); font-size: 12px; font-weight: 700; background: var(--panel-2); }
+    .tree-row { cursor: pointer; }
+    .tree-row:hover { background: var(--panel-2); }
+    .tree-icon { width: 18px; text-align: center; opacity: 0.8; }
+    .tree-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .tree-msg { color: var(--muted); font-size: 13px; }
+    .tree-time { color: var(--soft); font-size: 12px; white-space: nowrap; text-align: right; }
+    .up-dir { color: var(--accent); font-weight: 600; }
+
+    .file-preview {
+      border-top: 2px solid var(--line);
+      background: var(--panel-2);
+    }
+    .file-preview-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .file-preview-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; word-break: break-all; }
+    .file-preview-meta { color: var(--soft); font-size: 12px; }
+    .file-preview-content {
+      margin: 0;
+      padding: 14px;
+      background: #0f172a; color: #e2e8f0;
+      overflow-x: auto;
+      font-size: 13px; line-height: 1.5;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .file-preview-rendered { padding: 14px; background: var(--panel); }
+
+    /* ── Compare ── */
+    .compare-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .compare-controls select {
+      padding: 6px 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--panel);
+      font-weight: 700;
+      max-width: 200px;
+    }
+    .compare-summary { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+    .compare-stat { font-size: 13px; color: var(--muted); }
+    .compare-stat b { color: var(--text); font-size: 15px; }
+    .op-pill {
+      display: inline-block;
+      padding: 1px 7px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .op-added { color: var(--good); background: #ecfdf5; }
+    .op-modified { color: var(--accent); background: #eff5ff; }
+    .op-deleted { color: var(--bad); background: #fef2f2; }
+    .op-renamed { color: var(--warn); background: #fffbeb; }
+    .diff-file { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+    .diff-file-head { padding: 8px 12px; background: var(--panel-2); border-bottom: 1px solid var(--line); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+    .diff-body { margin: 0; padding: 10px 12px; background: #0f172a; color: #e2e8f0; overflow-x: auto; font-size: 12px; line-height: 1.5; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
+
+    /* ── History ── */
+    .commit-list { list-style: none; margin: 0; padding: 0; }
+    .commit-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+    .commit-item:last-child { border-bottom: 0; }
+    .commit-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      margin-top: 6px; flex: none;
+      background: var(--accent);
+    }
+    .commit-main { min-width: 0; flex: 1; }
+    .commit-msg { font-weight: 700; word-break: break-word; }
+    .commit-meta { color: var(--soft); font-size: 12px; margin-top: 2px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .commit-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .git-sha { color: #0969da; font-weight: 600; background: #ddf4ff; border-radius: 3px; padding: 1px 5px; }
+    .pill-good { background: #dcfce7; color: #166534; border-radius: 3px; padding: 1px 6px; font-size: 11px; font-weight: 600; }
+    .commit-msg { font-weight: 600; font-size: 14px; }
+    .commit-meta-row { color: var(--soft); font-size: 12px; margin-top: 4px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .verify-pill { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 5px; border: 1px solid var(--line-strong); }
+    .verify-verified { color: var(--good); border-color: #a7e9c8; background: #ecfdf5; }
+    .verify-unverified { color: var(--muted); background: var(--panel-2); }
+
+    /* ── Tags ── */
+    .tag-list { list-style: none; margin: 0; padding: 0; }
+    .tag-item { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--line); }
+    .tag-item:last-child { border-bottom: 0; }
+    .tag-glyph { color: var(--accent); font-size: 18px; margin-top: 1px; }
+    .tag-main { min-width: 0; flex: 1; }
+    .tag-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 800; font-size: 15px; }
+    .tag-title { color: var(--muted); font-size: 13px; margin-top: 2px; }
+    .tag-meta { color: var(--soft); font-size: 12px; margin-top: 4px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .tag-badges { display: inline-flex; gap: 5px; }
+
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid var(--line-strong);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: -2px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .repo-footer {
+      width: min(1080px, 100%);
+      margin: 0 auto;
+      padding: 8px 18px 24px;
+      color: var(--soft);
+      font-size: 12px;
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 540px) {
+      .repo-name { font-size: 18px; }
+      .tree-msg { display: none; }
+      .page { padding: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">
+      <span class="brand-mark">A</span>
+      <span>Agent Collaboration OS</span>
+    </a>
+    <div class="top-actions">
+      <a id="dashboardLink" class="btn btn-ghost" href="#" data-repo-crosslink="dashboard">Open in dashboard</a>
+      <a id="workLink" class="btn btn-ghost" href="#" data-repo-crosslink="work">Open in Work</a>
+      <button id="importBtn" class="btn btn-ghost" type="button" title="Import a local project (zip)">📦 Import</button>
+      <button id="uploadBtn" class="btn btn-ghost" type="button" title="Upload a file">📤 Upload</button>
+      <input type="file" id="repoUploadInput" hidden />
+      <button id="cloneBtn" class="btn btn-ghost" type="button" title="Clone this repository">⬇ Clone</button>
+      <a id="archiveLink" class="btn btn-primary" href="#" data-repo-archive>Download archive</a>
+    </div>
+    <!-- Clone panel (HTTPS URL, Gitea-style) -->
+    <div id="clonePanel" class="clone-panel hidden">
+      <div class="clone-panel-inner">
+        <span class="clone-label">HTTPS</span>
+        <input id="cloneUrlInput" class="clone-url-input" readonly placeholder="Loading…" />
+        <button id="cloneCopyBtn" class="btn btn-primary" type="button">Copy</button>
+        <a id="cloneOpenLink" class="btn btn-ghost" href="#" target="_blank">Open ↗</a>
+      </div>
+      <p id="cloneHint" class="clone-hint"></p>
+    </div>
+  </header>
+
+  <!-- Import wizard modal -->
+  <div id="importModal" class="modal-overlay hidden">
+    <div class="modal-card import-card">
+      <div class="modal-header">
+        <h2>📦 Import Project</h2>
+        <button class="modal-close" id="importCloseBtn" type="button">✕</button>
+      </div>
+      <div class="modal-body" id="importBody">
+        <!-- Step 1: select zip -->
+        <div id="importStep1" class="import-step">
+          <p class="import-desc">Import a local project as a <strong>zip archive</strong>. Recommended: <code>git archive HEAD --format=zip -o project.zip</code> from your local repo.</p>
+          <div class="import-dropzone" id="importDropzone">
+            <p>📎 Drag &amp; drop a <code>.zip</code> here, or <button class="btn btn-ghost" id="importPickBtn" type="button">browse</button></p>
+            <input type="file" id="importFileInput" accept=".zip,application/zip" hidden />
+            <p class="import-note">Filters out: <code>.git/</code>, <code>node_modules/</code>, <code>dist/</code>, <code>.env</code>, build artifacts.</p>
+          </div>
+        </div>
+        <!-- Step 2: preview -->
+        <div id="importStep2" class="import-step hidden">
+          <div id="importPreview"></div>
+          <div class="import-actions">
+            <button class="btn btn-ghost" id="importBackBtn" type="button">← Back</button>
+            <label class="import-mode"><input type="checkbox" id="importModeChangeset" checked /> Import as Changeset (reviewed before merge)</label>
+            <button class="btn btn-primary" id="importConfirmBtn" type="button">Import</button>
+          </div>
+        </div>
+        <!-- Step 3: result -->
+        <div id="importStep3" class="import-step hidden">
+          <div id="importResult"></div>
+          <div class="import-actions">
+            <button class="btn btn-primary" id="importDoneBtn" type="button">Done</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <main class="page" id="repoPage">
+    <!-- Repo header -->
+    <section class="panel" id="repoHeader" data-repo-header>
+      <div class="repo-header-body">
+        <div class="repo-title-row">
+          <span class="repo-owner" id="repoOwner">project</span>
+          <span class="repo-sep">/</span>
+          <h1 class="repo-name" id="repoName" data-repo-name>…</h1>
+          <span class="pill" id="visibilityPill" data-repo-visibility>…</span>
+        </div>
+        <p class="repo-desc empty" id="repoDesc" data-repo-desc>No description</p>
+        <div class="repo-chips" id="repoTopics" data-repo-topics></div>
+        <div class="repo-meta" id="repoMeta">
+          <span class="pill license hidden" id="licensePill" data-repo-license></span>
+          <div class="meta-block" id="langMeta" data-repo-languages></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Toolbar -->
+    <section class="repo-toolbar" id="repoToolbar" data-repo-toolbar>
+      <label class="branch-select" title="Branch">
+        <span>⌥</span>
+        <select id="branchSelect" data-repo-branch-select aria-label="Branch"></select>
+      </label>
+      <nav class="path-crumb" id="pathCrumb" data-repo-path aria-label="Path"></nav>
+    </section>
+
+    <!-- Sub-nav -->
+    <nav class="repo-subnav" id="repoSubnav" role="tablist" data-repo-subnav aria-label="Repository sections">
+      <button class="subnav-tab" type="button" data-view="overview" role="tab" aria-selected="true">Overview</button>
+      <button class="subnav-tab" type="button" data-view="files" role="tab" aria-selected="false">Files</button>
+      <button class="subnav-tab" type="button" data-view="compare" role="tab" aria-selected="false">Compare</button>
+      <button class="subnav-tab" type="button" data-view="history" role="tab" aria-selected="false">History</button>
+      <button class="subnav-tab" type="button" data-view="tags" role="tab" aria-selected="false">Tags</button>
+    </nav>
+
+    <!-- Content panels -->
+    <section class="panel repo-content" id="repoContent">
+      <!-- Overview -->
+      <div class="view" id="view-overview" data-repo-view="overview" role="tabpanel">
+        <div class="overview-grid">
+          <div class="readme-body" id="overviewReadme" data-repo-readme>
+            <div class="state"><div class="spinner"></div><div class="state-hint">Loading overview…</div></div>
+          </div>
+          <aside class="sidebar-stats" id="overviewSidebar" data-repo-sidebar></aside>
+        </div>
+      </div>
+
+      <!-- Files -->
+      <div class="view hidden" id="view-files" data-repo-view="files" role="tabpanel">
+        <div class="view-head">
+          <span class="view-title" id="filesTitle">Files</span>
+          <span class="view-sub" id="filesSub"></span>
+        </div>
+        <div id="filesTree" data-repo-files>
+          <div class="state"><div class="spinner"></div><div class="state-hint">Loading files…</div></div>
+        </div>
+        <div id="filesPreview" class="file-preview hidden" data-repo-file-preview></div>
+      </div>
+
+      <!-- Compare -->
+      <div class="view hidden" id="view-compare" data-repo-view="compare" role="tabpanel">
+        <div class="view-head">
+          <span class="view-title">Compare branches</span>
+        </div>
+        <div class="compare-controls" data-repo-compare-controls>
+          <select id="compareBase" data-repo-compare-base aria-label="Base branch"></select>
+          <span class="view-sub">…compared to…</span>
+          <select id="compareHead" data-repo-compare-head aria-label="Head branch"></select>
+        </div>
+        <div id="compareResult" data-repo-compare>
+          <div class="state"><div class="spinner"></div><div class="state-hint">Select two branches to compare.</div></div>
+        </div>
+      </div>
+
+      <!-- History -->
+      <div class="view hidden" id="view-history" data-repo-view="history" role="tabpanel">
+        <div class="view-head">
+          <span class="view-title">History</span>
+          <span class="view-sub" id="historySub"></span>
+        </div>
+        <div id="historyList" data-repo-history>
+          <div class="state"><div class="spinner"></div><div class="state-hint">Loading history…</div></div>
+        </div>
+      </div>
+
+      <!-- Tags -->
+      <div class="view hidden" id="view-tags" data-repo-view="tags" role="tabpanel">
+        <div class="view-head">
+          <span class="view-title">Tags</span>
+          <span class="view-sub" id="tagsSub"></span>
+        </div>
+        <div id="tagsList" data-repo-tags>
+          <div class="state"><div class="spinner"></div><div class="state-hint">Loading tags…</div></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="repo-footer">
+    <span>Read-only repository browser.</span>
+    <a id="footerWorkLink" href="#" data-repo-crosslink="work">Work</a>
+    <a id="footerReviewsLink" href="#" data-repo-crosslink="reviews">Reviews</a>
+    <a id="footerDashboardLink" href="#" data-repo-crosslink="dashboard">Dashboard</a>
+  </footer>
+
+  <script src="lib/format.js"></script>
+  <script src="lib/api.js"></script>
+  <script src="lib/markdown.js"></script>
+  <script>
+    (function () {
+      "use strict";
+
+      var STORAGE_KEY = "zz_human_workspace_simple_v1";
+      var JWT_FALLBACK_KEY = "zz_agent_jwt";
+      var DEFAULT_BASE_URL = window.location.protocol === "file:" ? "http://127.0.0.1:8000" : window.location.origin + "/agent";
+
+      // Fixed palette for the language bar. Not claimed as "official" language
+      // colors — just a stable visual cue.
+      var LANG_COLORS = ["#2563eb", "#047857", "#b45309", "#7c3aed", "#b91c1c", "#0e7490", "#db2777", "#475569", "#ca8a04", "#16a34a"];
+
+      var VIEWS = ["overview", "files", "compare", "history", "tags"];
+
+      var state = {
+        baseUrl: DEFAULT_BASE_URL,
+        jwt: "",
+        projectId: "",
+        project: null,
+        summary: null,
+        languages: null,
+        branches: [],
+        selectedBranch: "",
+        activeView: "overview",
+        currentPath: "",
+        // Per-view loaded flags so we only fetch once per session unless params change.
+        loaded: { overview: false, files: false, compare: false, history: false, tags: false }
+      };
+
+      // ── DOM refs ──
+      var els = {
+        repoName: document.getElementById("repoName"),
+        repoOwner: document.getElementById("repoOwner"),
+        repoDesc: document.getElementById("repoDesc"),
+        visibilityPill: document.getElementById("visibilityPill"),
+        topics: document.getElementById("repoTopics"),
+        licensePill: document.getElementById("licensePill"),
+        langMeta: document.getElementById("langMeta"),
+        branchSelect: document.getElementById("branchSelect"),
+        pathCrumb: document.getElementById("pathCrumb"),
+        subnav: document.getElementById("repoSubnav"),
+        archiveLink: document.getElementById("archiveLink"),
+        workLink: document.getElementById("workLink"),
+        dashboardLink: document.getElementById("dashboardLink"),
+        footerWorkLink: document.getElementById("footerWorkLink"),
+        footerReviewsLink: document.getElementById("footerReviewsLink"),
+        footerDashboardLink: document.getElementById("footerDashboardLink"),
+        overviewReadme: document.getElementById("overviewReadme"),
+        overviewSidebar: document.getElementById("overviewSidebar"),
+        filesTree: document.getElementById("filesTree"),
+        filesPreview: document.getElementById("filesPreview"),
+        filesSub: document.getElementById("filesSub"),
+        compareBase: document.getElementById("compareBase"),
+        compareHead: document.getElementById("compareHead"),
+        compareResult: document.getElementById("compareResult"),
+        historyList: document.getElementById("historyList"),
+        historySub: document.getElementById("historySub"),
+        tagsList: document.getElementById("tagsList"),
+        tagsSub: document.getElementById("tagsSub")
+      };
+
+      // ── Storage / config ──
+      function loadConfig() {
+        try {
+          var saved = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "{}");
+          state.baseUrl = CodexUtils.normalizeBaseUrl(saved.baseUrl || DEFAULT_BASE_URL);
+          state.jwt = saved.jwt || window.localStorage.getItem(JWT_FALLBACK_KEY) || "";
+          state.projectId = saved.selectedProjectId || "";
+        } catch (e) {}
+        var params = new URLSearchParams(window.location.search);
+        var urlPid = params.get("project_id");
+        if (urlPid) state.projectId = urlPid;
+      }
+
+      function params() { return new URLSearchParams(window.location.search); }
+
+      function syncUrl(kv) {
+        try {
+          var p = params();
+          for (var k in kv) {
+            if (kv[k] === null || kv[k] === undefined || kv[k] === "") p.delete(k);
+            else p.set(k, kv[k]);
+          }
+          var qs = p.toString();
+          var next = window.location.pathname + (qs ? "?" + qs : "");
+          window.history.replaceState(null, "", next);
+        } catch (e) {}
+      }
+
+      // Formatting, escaping, and API helpers live in dashboard/lib/*.js
+      // (window.CodexUtils). The path utilities below are specific to the
+      // repository page's file tree.
+      function baseName(path) {
+        if (!path) return "";
+        var parts = String(path).replace(/\/+$/, "").split("/");
+        return parts[parts.length - 1] || path;
+      }
+
+      function dirOf(path) {
+        if (!path) return "";
+        var idx = String(path).lastIndexOf("/");
+        return idx >= 0 ? String(path).slice(0, idx) : "";
+      }
+
+      function extOf(path) {
+        var name = baseName(path);
+        var idx = name.lastIndexOf(".");
+        if (idx <= 0) return "";
+        return name.slice(idx).toLowerCase();
+      }
+
+      // Markdown rendering lives in dashboard/lib/markdown.js (CodexUtils).
+      // Kept as a thin local delegator so existing call sites stay unchanged and
+      // the repository-page smoke's static "function simpleMarkdown" wiring check
+      // keeps passing; the implementation is shared with project-space.
+      function simpleMarkdown(text) { return CodexUtils.simpleMarkdown(text); }
+
+      // ── Cross-links ──
+      function projectSpaceUrl(tab) {
+        var p = params().get("project_id") || state.projectId || "";
+        // Route to new workbench instead of old project-space.html
+        if (tab === "reviews") return "approvals.html?project_id=" + encodeURIComponent(p);
+        if (tab === "work") return "tasks.html?project_id=" + encodeURIComponent(p);
+        return "workbench.html?project_id=" + encodeURIComponent(p);
+      }
+
+      function renderCrosslinks() {
+        var work = projectSpaceUrl("work");
+        var reviews = projectSpaceUrl("reviews");
+        var dash = projectSpaceUrl("overview");
+        els.workLink.href = work;
+        els.footerWorkLink.href = work;
+        els.footerReviewsLink.href = reviews;
+        els.dashboardLink.href = dash;
+        els.footerDashboardLink.href = dash;
+      }
+
+      function archiveUrl() {
+        var pid = encodeURIComponent(state.projectId);
+        var b = state.selectedBranch ? encodeURIComponent(state.selectedBranch) : "";
+        return state.baseUrl + "/v1/projects/" + pid + "/archive.zip" + (b ? "?branch=" + b : "");
+      }
+
+      // ── Clone panel (Gitea-style HTTPS URL) ──
+      var clonePanel = document.getElementById('clonePanel');
+      var cloneUrlInput = document.getElementById('cloneUrlInput');
+      var cloneHint = document.getElementById('cloneHint');
+      var cloneCopyBtn = document.getElementById('cloneCopyBtn');
+      var cloneOpenLink = document.getElementById('cloneOpenLink');
+      var cloneBtn = document.getElementById('cloneBtn');
+      if (cloneBtn) cloneBtn.addEventListener('click', function () {
+        if (clonePanel.classList.contains('hidden')) {
+          clonePanel.classList.remove('hidden');
+          initCloneRemote();
+        } else {
+          clonePanel.classList.add('hidden');
+        }
+      });
+      if (cloneCopyBtn) cloneCopyBtn.addEventListener('click', function () {
+        if (cloneUrlInput.value) {
+          navigator.clipboard.writeText(cloneUrlInput.value).then(function () {
+            cloneCopyBtn.textContent = 'Copied!';
+            setTimeout(function () { cloneCopyBtn.textContent = 'Copy'; }, 1500);
+          });
+        }
+      });
+      function initCloneRemote() {
+        var pid = encodeURIComponent(state.projectId);
+        if (!pid || pid === 'undefined') { cloneHint.textContent = 'Select a project first.'; return; }
+        cloneUrlInput.value = 'Loading…';
+        cloneHint.textContent = '';
+        CodexUtils.api(state.baseUrl, state.jwt, 'GET', '/v1/projects/' + pid + '/git/remote')
+          .then(function (res) {
+            if (res && res.enabled && res.clone_url) {
+              cloneUrlInput.value = res.clone_url;
+              if (res.web_url) cloneOpenLink.href = res.web_url;
+              cloneHint.textContent = 'git clone ' + res.clone_url;
+            } else {
+              cloneUrlInput.value = '';
+              cloneHint.textContent = 'Git gateway not enabled. Use Download archive (ZIP) for a file snapshot, or changeset merge to produce a real git commit.';
+            }
+          })
+          .catch(function () {
+            cloneUrlInput.value = '';
+            cloneHint.textContent = 'Could not load clone URL. Use Download archive for a ZIP snapshot.';
+          });
+      }
+
+      // ── Header rendering ──
+
+      // ── Import wizard ──
+      var importModal = document.getElementById('importModal');
+      var importFileInput = document.getElementById('importFileInput');
+      var importPickBtn = document.getElementById('importPickBtn');
+      var importDropzone = document.getElementById('importDropzone');
+      var importCloseBtn = document.getElementById('importCloseBtn');
+      var importBackBtn = document.getElementById('importBackBtn');
+      var importConfirmBtn = document.getElementById('importConfirmBtn');
+      var importDoneBtn = document.getElementById('importDoneBtn');
+      var importArchiveB64 = null;
+
+      function openImportWizard() {
+        importModal.classList.remove('hidden');
+        showImportStep(1);
+        importArchiveB64 = null;
+      }
+      function closeImportWizard() { importModal.classList.add('hidden'); }
+      function showImportStep(n) {
+        [1,2,3].forEach(function(s){ document.getElementById('importStep'+s).classList.add('hidden'); });
+        document.getElementById('importStep'+n).classList.remove('hidden');
+      }
+      document.getElementById('importBtn').addEventListener('click', openImportWizard);
+      importCloseBtn.addEventListener('click', closeImportWizard);
+      importDoneBtn.addEventListener('click', function(){ closeImportWizard(); loadFiles(); });
+      importBackBtn.addEventListener('click', function(){ showImportStep(1); });
+      importPickBtn.addEventListener('click', function(){ importFileInput.click(); });
+      importFileInput.addEventListener('change', function(e){ handleImportFile(e.target.files[0]); });
+      importDropzone.addEventListener('dragover', function(e){ e.preventDefault(); importDropzone.classList.add('drag-over'); });
+      importDropzone.addEventListener('dragleave', function(){ importDropzone.classList.remove('drag-over'); });
+      importDropzone.addEventListener('drop', function(e){
+        e.preventDefault(); importDropzone.classList.remove('drag-over');
+        if (e.dataTransfer.files[0]) handleImportFile(e.dataTransfer.files[0]);
+      });
+
+      function handleImportFile(file) {
+        if (!file) return;
+        if (!file.name.endsWith('.zip')) { alert('Please select a .zip file'); return; }
+        var reader = new FileReader();
+        reader.onload = function() {
+          var b64 = reader.result.split(',')[1];
+          importArchiveB64 = b64;
+          previewImport(b64);
+        };
+        reader.readAsDataURL(file);
+      }
+
+      function previewImport(b64) {
+        document.getElementById('importPreview').innerHTML = '<p>Analyzing archive…</p>';
+        showImportStep(2);
+        var pid = encodeURIComponent(state.projectId);
+        CodexUtils.api(state.baseUrl, state.jwt, 'POST', '/v1/projects/' + pid + '/files/import-preview', { archive_base64: b64 })
+          .then(function(res) {
+            var html = '<div class="import-summary">';
+            html += '<span class="pill pill-good">' + res.file_count + ' files to import</span>';
+            html += '<span class="pill">' + res.ignored_count + ' filtered</span>';
+            html += '<span class="pill">' + Math.round(res.total_size_bytes / 1024) + ' KB</span>';
+            html += '</div>';
+            if (res.risks && res.risks.length) {
+              html += '<div class="import-risks"><strong>⚠ Notes:</strong><ul>';
+              res.risks.forEach(function(r){ html += '<li>' + r + '</li>'; });
+              html += '</ul></div>';
+            }
+            html += '<div class="import-filelist"><strong>Files:</strong><ul>';
+            (res.files || []).forEach(function(f){
+              var badge = f.is_binary ? '<span class="tag">binary</span>' : '';
+              html += '<li>' + f.path + ' <span class="file-size">' + Math.round(f.size_bytes/1024) + 'KB</span>' + badge + '</li>';
+            });
+            html += '</ul></div>';
+            if (res.ignored_sample && res.ignored_sample.length) {
+              html += '<details class="import-ignored"><summary>Filtered (' + res.ignored_count + ')</summary><ul>';
+              res.ignored_sample.forEach(function(i){ html += '<li class="muted">' + i.path + ' — ' + i.reason + '</li>'; });
+              html += '</ul></details>';
+            }
+            document.getElementById('importPreview').innerHTML = html;
+          })
+          .catch(function(err) {
+            document.getElementById('importPreview').innerHTML = '<p class="error">Preview failed: ' + (err.message||err) + '</p>';
+          });
+      }
+
+      importConfirmBtn.addEventListener('click', function() {
+        if (!importArchiveB64) return;
+        var mode = document.getElementById('importModeChangeset').checked ? 'changeset' : 'direct';
+        importConfirmBtn.disabled = true;
+        importConfirmBtn.textContent = 'Importing…';
+        var pid = encodeURIComponent(state.projectId);
+        CodexUtils.api(state.baseUrl, state.jwt, 'POST', '/v1/projects/' + pid + '/files/import', { archive_base64: importArchiveB64, mode: mode })
+          .then(function(res) {
+            importConfirmBtn.disabled = false; importConfirmBtn.textContent = 'Import';
+            var html = '<div class="import-success">✅ ';
+            if (res.mode === 'changeset') {
+              html += 'Imported ' + res.file_count + ' files into <strong>changeset ' + (res.changeset_id||'').slice(0,8) + '</strong>.<br>The owner/main agent must review and merge it before files appear in the project.';
+            } else {
+              html += 'Imported ' + res.file_count + ' files directly.';
+            }
+            html += '</div>';
+            document.getElementById('importResult').innerHTML = html;
+            showImportStep(3);
+          })
+          .catch(function(err) {
+            importConfirmBtn.disabled = false; importConfirmBtn.textContent = 'Import';
+            document.getElementById('importResult').innerHTML = '<p class="error">Import failed: ' + (err.message||err) + '</p>';
+            showImportStep(3);
+          });
+      });
+
+      // ── Upload single file ──
+      var uploadBtn = document.getElementById('uploadBtn');
+      var repoUploadInput = document.getElementById('repoUploadInput');
+      if (uploadBtn) uploadBtn.addEventListener('click', function(){ repoUploadInput.click(); });
+      if (repoUploadInput) repoUploadInput.addEventListener('change', function(e) {
+        var file = e.target.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function() {
+          var content = reader.result.split(',')[1];
+          var pid = encodeURIComponent(state.projectId);
+          var path = file.name;
+          uploadBtn.textContent = 'Uploading…'; uploadBtn.disabled = true;
+          CodexUtils.api(state.baseUrl, state.jwt, 'POST', '/v1/projects/' + pid + '/files', {
+            path: path, content_base64: content, message: 'Upload: ' + path,
+          }).then(function() {
+            uploadBtn.textContent = '📤 Upload'; uploadBtn.disabled = false;
+            loadFiles(); // refresh
+          }).catch(function(err) {
+            uploadBtn.textContent = '📤 Upload'; uploadBtn.disabled = false;
+            alert('Upload failed: ' + (err.message || err));
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+
+      // ── Header rendering (actual render) ──
+      function renderHeader() {
+        var p = state.project || {};
+        els.repoName.textContent = p.name || state.projectId || "Repository";
+        els.repoOwner.textContent = "project";
+        if (p.description) {
+          els.repoDesc.textContent = p.description;
+          els.repoDesc.classList.remove("empty");
+        } else {
+          els.repoDesc.textContent = "No description provided.";
+          els.repoDesc.classList.add("empty");
+        }
+        var vis = CodexUtils.visibilityLabel(p.visibility);
+        els.visibilityPill.textContent = vis;
+        els.visibilityPill.className = "pill " + (p.visibility === "public" ? "vis-public" : "vis-private");
+
+        renderTopics(p.topics || (state.summary && state.summary.topics) || []);
+        renderLicense(state.summary && state.summary.license);
+        renderLanguages();
+        renderArchive();
+        renderCrosslinks();
+      }
+
+      function renderTopics(topics) {
+        var list = Array.isArray(topics) ? topics.filter(function (t) { return t; }) : [];
+        if (!list.length) {
+          els.topics.innerHTML = '<span class="view-sub">No topics</span>';
+          return;
+        }
+        els.topics.innerHTML = list.map(function (t) {
+          return '<span class="topic-chip">' + CodexUtils.escapeHtml(t) + "</span>";
+        }).join("");
+      }
+
+      function renderLicense(license) {
+        if (!license || !license.name) {
+          els.licensePill.classList.add("hidden");
+          return;
+        }
+        els.licensePill.classList.remove("hidden");
+        els.licensePill.textContent = "License: " + license.name;
+      }
+
+      function renderLanguages() {
+        var langs = state.languages && state.languages.languages; // {Name: bytes}
+        var total = state.languages && Number(state.languages.total_bytes);
+        var entries = [];
+        if (langs && typeof langs === "object") {
+          entries = Object.keys(langs)
+            .map(function (name) { return { name: name, bytes: Number(langs[name]) || 0 }; })
+            .filter(function (e) { return e.bytes > 0; })
+            .sort(function (a, b) { return b.bytes - a.bytes; });
+        }
+        if (!total || !entries.length) {
+          // Fallback: file-type summary from summary.files.file_types
+          renderFiletypeFallback();
+          return;
+        }
+        var barSegs = [];
+        var legend = [];
+        for (var i = 0; i < entries.length; i++) {
+          var e = entries[i];
+          var pct = Math.max(0, (e.bytes / total) * 100);
+          var color = LANG_COLORS[i % LANG_COLORS.length];
+          barSegs.push('<span class="lang-seg" style="width:' + pct.toFixed(2) + '%;background:' + color + '" title="' +
+            CodexUtils.escapeAttr(e.name) + " " + pct.toFixed(1) + '%"></span>');
+          if (i < 8) {
+            legend.push('<span><span class="lang-dot" style="background:' + color + '"></span>' +
+              CodexUtils.escapeHtml(e.name) + " <strong>" + pct.toFixed(1) + "%</strong></span>");
+          }
+        }
+        var html = '<div class="lang-bar" data-repo-lang-bar>' + barSegs.join("") + "</div>" +
+          '<div class="lang-legend" data-repo-lang-legend>' + legend.join("") + "</div>";
+        els.langMeta.innerHTML = html;
+      }
+
+      function renderFiletypeFallback() {
+        var types = (state.summary && state.summary.files && state.summary.files.file_types) || [];
+        if (!types.length) {
+          els.langMeta.innerHTML = '<span class="view-sub" data-repo-filetypes>No language data</span>';
+          return;
+        }
+        var parts = types.slice(0, 10).map(function (t) {
+          return CodexUtils.escapeHtml(t.extension || "(none)") + " · " + t.count;
+        });
+        els.langMeta.innerHTML = '<div class="lang-legend" data-repo-filetypes><span>' + parts.join("</span><span>") + "</span></div>";
+      }
+
+      function renderArchive() {
+        els.archiveLink.href = archiveUrl();
+        els.archiveLink.setAttribute("download", "");
+      }
+
+      // ── Branch selector + toolbar ──
+      function defaultBranchName() {
+        var b = (state.branches || []).find(function (x) { return x.is_default; });
+        if (b) return b.name;
+        return (state.branches[0] && state.branches[0].name) || "main";
+      }
+
+      function renderToolbar() {
+        var prev = state.selectedBranch;
+        var branches = state.branches || [];
+        if (!branches.length) {
+          els.branchSelect.innerHTML = '<option>' + CodexUtils.escapeHtml(prev || "main") + "</option>";
+        } else {
+          els.branchSelect.innerHTML = branches.map(function (b) {
+            var sel = b.name === prev ? " selected" : "";
+            return '<option value="' + CodexUtils.escapeAttr(b.name) + '"' + sel + ">" + CodexUtils.escapeHtml(b.name) + (b.is_default ? " (default)" : "") + "</option>";
+          }).join("");
+        }
+        renderPathCrumb();
+      }
+
+      function renderPathCrumb() {
+        if (state.activeView !== "files") {
+          els.pathCrumb.innerHTML = "";
+          return;
+        }
+        var path = state.currentPath || "";
+        var parts = path ? path.split("/").filter(Boolean) : [];
+        var html = '<a href="#" data-crumb="">root</a>';
+        var acc = "";
+        for (var i = 0; i < parts.length; i++) {
+          acc = acc ? acc + "/" + parts[i] : parts[i];
+          html += '<span class="crumb-sep">/</span><a href="#" data-crumb="' + CodexUtils.escapeAttr(acc) + '">' + CodexUtils.escapeHtml(parts[i]) + "</a>";
+        }
+        els.pathCrumb.innerHTML = html;
+        var links = els.pathCrumb.querySelectorAll("a[data-crumb]");
+        for (var j = 0; j < links.length; j++) {
+          links[j].addEventListener("click", function (ev) {
+            ev.preventDefault();
+            navigateToPath(ev.currentTarget.getAttribute("data-crumb") || "");
+          });
+        }
+      }
+
+      // ── View switching ──
+      function setView(view, opts) {
+        opts = opts || {};
+        if (VIEWS.indexOf(view) < 0) view = "overview";
+        state.activeView = view;
+        for (var i = 0; i < VIEWS.length; i++) {
+          var v = VIEWS[i];
+          var panel = document.getElementById("view-" + v);
+          if (v === view) panel.classList.remove("hidden");
+          else panel.classList.add("hidden");
+        }
+        var tabs = els.subnav.querySelectorAll(".subnav-tab");
+        for (var k = 0; k < tabs.length; k++) {
+          tabs[k].setAttribute("aria-selected", tabs[k].getAttribute("data-view") === view ? "true" : "false");
+        }
+        syncUrl({ view: view === "overview" ? null : view });
+        renderPathCrumb();
+        loadView(view, opts);
+        window.scrollTo(0, 0);
+      }
+
+      function loadView(view, opts) {
+        opts = opts || {};
+        if (view === "overview") return loadOverview(opts.force);
+        if (view === "files") return loadFiles(opts.force);
+        if (view === "compare") return loadCompare(opts.force);
+        if (view === "history") return loadHistory(opts.force);
+        if (view === "tags") return loadTags(opts.force);
+      }
+
+      function stateBox(kind, title, hint, isError) {
+        return '<div class="state' + (isError ? " error" : "") + '">' +
+          '<div class="state-icon">' + (isError ? "⚠" : kind === "empty" ? "∅" : "•") + "</div>" +
+          '<div class="state-title">' + CodexUtils.escapeHtml(title) + "</div>" +
+          (hint ? '<div class="state-hint">' + CodexUtils.escapeHtml(hint) + "</div>" : "") +
+          "</div>";
+      }
+
+      function loadingBox(text) {
+        return '<div class="state"><div class="spinner"></div><div class="state-hint">' + CodexUtils.escapeHtml(text || "Loading…") + "</div></div>";
+      }
+
+      // ── Overview view ──
+      function loadOverview(force) {
+        if (state.loaded.overview && !force) return;
+        state.loaded.overview = true;
+        els.overviewReadme.innerHTML = loadingBox("Loading README…");
+        renderSidebar();
+        var pid = encodeURIComponent(state.projectId);
+        var b = state.selectedBranch ? encodeURIComponent(state.selectedBranch) : "";
+        CodexUtils.api(state.baseUrl, state.jwt, "GET", "/v1/projects/" + pid + "/readme" + (b ? "?branch=" + b : ""))
+          .then(function (readme) {
+            if (!readme || !readme.content) {
+              els.overviewReadme.innerHTML = stateBox("empty", "No README found",
+                "This project does not have a README file on " + (state.selectedBranch || "the default branch") + ".");
+              return;
+            }
+            var content = readme.content || "";
+            if (/\.(md|markdown)$/i.test(readme.path || "")) {
+              els.overviewReadme.innerHTML = simpleMarkdown(content);
+            } else {
+              els.overviewReadme.innerHTML = "<pre><code>" + CodexUtils.escapeHtml(content) + "</code></pre>";
+            }
+          })
+          .catch(function (err) {
+            if (err && err.status === 404) {
+              els.overviewReadme.innerHTML = stateBox("empty", "No README found",
+                "This project does not have a README file on " + (state.selectedBranch || "the default branch") + ".");
+            } else {
+              els.overviewReadme.innerHTML = stateBox("empty", "Could not load README", describeErr(err), true);
+            }
+          });
+      }
+
+      function renderSidebar() {
+        var s = state.summary || {};
+        var files = s.files || {};
+        var revs = (s.recent_activity && s.recent_activity.revisions) || [];
+        var last = s.last_updated_file || null;
+        var cards = [];
+        cards.push(statCard("Files", String(files.total_count != null ? files.total_count : "—")));
+        cards.push(statCard("Top-level directories", String(files.directory_count != null ? files.directory_count : "—")));
+        if (files.total_bytes != null) cards.push(statCard("Total size", CodexUtils.formatBytes(files.total_bytes)));
+        cards.push(statCard("Default branch", defaultBranchName()));
+        if (last && last.updated_at) cards.push(statCard("Last updated", CodexUtils.formatDate(last.updated_at)));
+
+        var revHtml = "";
+        if (revs.length) {
+          revHtml = '<div class="stat-card"><div class="stat-label">Recent changes</div><ul class="recent-list">' +
+            revs.slice(0, 6).map(function (r) {
+              return '<li><div class="recent-path">' + CodexUtils.escapeHtml(r.path || "(file)") + "</div>" +
+                '<div class="recent-meta">' + CodexUtils.escapeHtml((r.message || "change").slice(0, 80)) + " · " + CodexUtils.formatDate(r.created_at) + "</div></li>";
+            }).join("") + "</ul></div>";
+        }
+        els.overviewSidebar.innerHTML = cards.join("") + revHtml;
+      }
+
+      function statCard(label, value) {
+        return '<div class="stat-card"><div class="stat-label">' + CodexUtils.escapeHtml(label) + "</div>" +
+          '<div class="stat-value">' + CodexUtils.escapeHtml(value) + "</div></div>";
+      }
+
+      // ── Files view ──
+      function navigateToPath(path) {
+        state.currentPath = path || "";
+        syncUrl({ path: path || null });
+        renderPathCrumb();
+        els.filesPreview.classList.add("hidden");
+        els.filesPreview.innerHTML = "";
+        loadFiles(true);
+      }
+
+      function loadFiles(force) {
+        if (state.loaded.files && !force) return;
+        state.loaded.files = true;
+        els.filesTree.innerHTML = loadingBox("Loading files…");
+        els.filesSub.textContent = state.currentPath ? state.currentPath : "/";
+        var pid = encodeURIComponent(state.projectId);
+        var qs = "view=children";
+        if (state.currentPath) qs += "&path_prefix=" + encodeURIComponent(state.currentPath);
+        if (state.selectedBranch) qs += "&branch=" + encodeURIComponent(state.selectedBranch);
+        CodexUtils.api(state.baseUrl, state.jwt, "GET", "/v1/projects/" + pid + "/files?" + qs)
+          .then(function (res) {
+            renderFilesTree(res || {});
+          })
+          .catch(function (err) {
+            els.filesTree.innerHTML = stateBox("empty", "Could not load files", describeErr(err), true);
+          });
+      }
+
+      function renderFilesTree(res) {
+        var dirs = (res.directories || []);
+        var files = (res.files && res.files.data) || [];
+        if (!dirs.length && !files.length) {
+          els.filesTree.innerHTML = stateBox("empty", "This directory is empty", "No files or sub-directories here.");
+          return;
+        }
+        var rows = "";
+        if (state.currentPath) {
+          var parent = dirOf(state.currentPath);
+          rows += '<tr class="tree-row" data-dir="' + CodexUtils.escapeAttr(parent) + '"><td class="tree-icon">📁</td>' +
+            '<td class="up-dir">..</td><td class="tree-msg"></td><td class="tree-time"></td></tr>';
+        }
+        rows += dirs.map(function (d) {
+          // The children-view directory path carries a trailing slash ("src/");
+          // strip it so navigation passes a clean path segment.
+          var navPath = String(d.path || "").replace(/\/+$/, "");
+          return '<tr class="tree-row" data-dir="' + CodexUtils.escapeAttr(navPath) + '"><td class="tree-icon">📁</td>' +
+            '<td class="tree-name">' + CodexUtils.escapeHtml(d.name) + "</td>" +
+            '<td class="tree-msg">' + (d.child_count != null ? CodexUtils.escapeHtml(d.child_count + " items") : "") + "</td>" +
+            '<td class="tree-time">' + CodexUtils.escapeHtml(CodexUtils.formatDate(d.latest_updated_at)) + "</td></tr>";
+        }).join("");
+        rows += files.map(function (f) {
+          return '<tr class="tree-row" data-file="' + CodexUtils.escapeAttr(f.id) + '" data-path="' + CodexUtils.escapeAttr(f.path) + '">' +
+            '<td class="tree-icon">' + fileGlyph(f.path) + "</td>" +
+            '<td class="tree-name">' + CodexUtils.escapeHtml(baseName(f.path)) + "</td>" +
+            '<td class="tree-msg">' + CodexUtils.escapeHtml(f.content_type || "") + "</td>" +
+            '<td class="tree-time">' + CodexUtils.escapeHtml(CodexUtils.formatBytes(f.size_bytes)) + "</td></tr>";
+        }).join("");
+
+        els.filesTree.innerHTML = '<table class="tree-table"><thead><tr>' +
+          "<th></th><th>Name</th><th>Type</th><th style=\"text-align:right\">Size / time</th>" +
+          "</tr></thead><tbody>" + rows + "</tbody></table>";
+
+        bindTreeRows();
+      }
+
+      function fileGlyph(path) {
+        var ext = extOf(path);
+        if (".md".indexOf(ext) >= 0) return "📘";
+        if (".png.jpg.jpeg.gif.svg.webp".indexOf(ext) >= 0) return "🖼";
+        if (".zip.gz.tar".indexOf(ext) >= 0) return "🗜";
+        return "📄";
+      }
+
+      function bindTreeRows() {
+        var dirRows = els.filesTree.querySelectorAll("tr[data-dir]");
+        for (var i = 0; i < dirRows.length; i++) {
+          dirRows[i].addEventListener("click", function (ev) {
+            navigateToPath(ev.currentTarget.getAttribute("data-dir") || "");
+          });
+        }
+        var fileRows = els.filesTree.querySelectorAll("tr[data-file]");
+        for (var j = 0; j < fileRows.length; j++) {
+          fileRows[j].addEventListener("click", function (ev) {
+            openFilePreview(ev.currentTarget.getAttribute("data-file"), ev.currentTarget.getAttribute("data-path"));
+          });
+        }
+      }
+
+      function openFilePreview(fileId, path) {
+        els.filesPreview.classList.remove("hidden");
+        els.filesPreview.innerHTML = '<div class="file-preview-head"><span class="file-preview-path">' +
+          CodexUtils.escapeHtml(path) + '</span></div><div class="state"><div class="spinner"></div><div class="state-hint">Loading file…</div></div>';
+        var pid = encodeURIComponent(state.projectId);
+        var b = state.selectedBranch ? encodeURIComponent(state.selectedBranch) : "";
+        CodexUtils.api(state.baseUrl, state.jwt, "GET", "/v1/projects/" + pid + "/files/" + encodeURIComponent(fileId) + (b ? "?branch=" + b : ""))
+          .then(function (f) {
+            renderFilePreview(f);
+          })
+          .catch(function (err) {
+            els.filesPreview.innerHTML = '<div class="file-preview-head"><span class="file-preview-path">' +
+              CodexUtils.escapeHtml(path) + '</span></div>' + stateBox("empty", "Could not load file", describeErr(err), true);
+          });
+      }
+
+      function renderFilePreview(f) {
+        if (!f) return;
+        var path = f.path || "";
+        var isMarkdown = /\.(md|markdown)$/i.test(path);
+        var isText = isTextContentType(f.content_type, path);
+        var meta = [
+          f.content_type ? CodexUtils.escapeHtml(f.content_type) : "",
+          f.size_bytes != null ? CodexUtils.formatBytes(f.size_bytes) : "",
+          f.updated_at ? "updated " + CodexUtils.formatDate(f.updated_at) : ""
+        ].filter(Boolean).join(" · ");
+
+        var body = "";
+        if (isMarkdown && f.content != null) {
+          body = '<div class="file-preview-rendered readme-body">' + simpleMarkdown(String(f.content)) + "</div>";
+        } else if (isText && f.content != null) {
+          body = '<pre class="file-preview-content">' + CodexUtils.escapeHtml(String(f.content)) + "</pre>";
+        } else {
+          body = '<div class="state"><div class="state-title">Binary or unsupported preview</div>' +
+            '<div class="state-hint">This file type is not shown inline. Use the raw download in the Files view.</div></div>';
+        }
+        els.filesPreview.innerHTML = '<div class="file-preview-head">' +
+          '<span class="file-preview-path">' + CodexUtils.escapeHtml(path) + "</span>" +
+          '<span class="file-preview-meta">' + meta + "</span>" +
+          "</div>" + body;
+        els.filesPreview.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      function isTextContentType(ct, path) {
+        ct = (ct || "").toLowerCase();
+        if (!ct) {
+          // Heuristic by extension.
+          return /\.(md|markdown|txt|json|ya?ml|csv|tsv|js|mjs|cjs|ts|tsx|jsx|html?|css|scss|less|py|rb|go|rs|java|c|cc|cpp|h|hpp|sh|bash|zsh|toml|ini|env|xml|sql|graphql|gql|dockerfile|gitignore|gitattributes|editorconfig)$/i.test(path || "");
+        }
+        if (ct.indexOf("text/") === 0) return true;
+        if (/(json|xml|yaml|javascript|typescript|csv|svg\+xml|x-sh)/.test(ct)) return true;
+        if (ct === "application/octet-stream") {
+          return /\.(md|markdown|txt|json|ya?ml|csv|js|ts|py|sh|toml|ini|env)$/i.test(path || "");
+        }
+        return false;
+      }
+
+      // ── Compare view ──
+      function loadCompare(force) {
+        if (state.loaded.compare && !force) return;
+        state.loaded.compare = true;
+        // Populate base/head selects from branches.
+        var branches = state.branches || [];
+        var opts = branches.length
+          ? branches.map(function (b) { return '<option value="' + CodexUtils.escapeAttr(b.name) + '">' + CodexUtils.escapeHtml(b.name) + "</option>"; }).join("")
+          : "<option>(no branches)</option>";
+        els.compareBase.innerHTML = opts;
+        els.compareHead.innerHTML = opts;
+        var p = params();
+        var base = p.get("base") || defaultBranchName();
+        var head = p.get("head") || secondBranchName() || defaultBranchName();
+        setSelectValue(els.compareBase, base);
+        setSelectValue(els.compareHead, head);
+        runCompare();
+      }
+
+      function secondBranchName() {
+        var def = defaultBranchName();
+        var b = (state.branches || []).find(function (x) { return x.name !== def; });
+        return b ? b.name : def;
+      }
+
+      function setSelectValue(sel, value) {
+        for (var i = 0; i < sel.options.length; i++) {
+          if (sel.options[i].value === value) { sel.value = value; return; }
+        }
+        if (sel.options.length) sel.value = sel.options[0].value;
+      }
+
+      function runCompare() {
+        var base = els.compareBase.value;
+        var head = els.compareHead.value;
+        syncUrl({ base: base || null, head: head || null });
+        if (!base || !head || base === head) {
+          els.compareResult.innerHTML = stateBox("empty", "Nothing to compare",
+            base === head ? "Base and head are the same branch." : "Select two different branches to see their differences.");
+          return;
+        }
+        els.compareResult.innerHTML = loadingBox("Comparing " + base + " … " + head + " …");
+        var pid = encodeURIComponent(state.projectId);
+        CodexUtils.api(state.baseUrl, state.jwt, "GET", "/v1/projects/" + pid + "/branches/compare?base=" + encodeURIComponent(base) + "&head=" + encodeURIComponent(head))
+          .then(function (res) {
+            renderCompare(res && res.data ? res.data : res, base, head);
+          })
+          .catch(function (err) {
+            els.compareResult.innerHTML = stateBox("empty", "Could not load comparison", describeErr(err), true);
+          });
+      }
+
+      function renderCompare(data, base, head) {
+        var summary = (data && data.summary) || {};
+        var files = (data && data.files) || [];
+        var s = summary || {};
+        els.compareResult.innerHTML =
+          '<div class="compare-summary" data-repo-compare-summary>' +
+            compareStat("Files changed", s.files_changed != null ? s.files_changed : (s.total != null ? s.total : files.length)) +
+            compareStat("Added", s.added || 0) +
+            compareStat("Modified", s.modified || 0) +
+            compareStat("Deleted", s.deleted || 0) +
+            compareStat("Renamed", s.renamed || 0) +
+            "</div>" +
+          '<div id="compareFiles" data-repo-compare-files></div>';
+        var filesBox = document.getElementById("compareFiles");
+        if (!files.length) {
+          filesBox.innerHTML = stateBox("empty", "No differences", "There are no file changes between " + base + " and " + head + ".");
+          return;
+        }
+        filesBox.innerHTML = files.map(function (f) { return renderDiffFile(f); }).join("");
+      }
+
+      function compareStat(label, value) {
+        return '<div class="compare-stat"><b>' + CodexUtils.escapeHtml(String(value)) + "</b> " + CodexUtils.escapeHtml(label) + "</div>";
+      }
+
+      function opClass(op) {
+        if (op === "added") return "op-added";
+        if (op === "modified") return "op-modified";
+        if (op === "deleted") return "op-deleted";
+        if (op === "renamed") return "op-renamed";
+        return "op-modified";
+      }
+
+      function renderDiffFile(f) {
+        var op = f.op || "modified";
+        var name = f.path || "";
+        var label = f.op === "renamed" && f.old_path ? CodexUtils.escapeHtml(f.old_path) + " → " + CodexUtils.escapeHtml(name) : CodexUtils.escapeHtml(name);
+        var body = "";
+        if (f.op === "added" && f.new_content != null) {
+          body = diffBody(f.new_content, "added");
+        } else if (f.op === "deleted" && f.old_content != null) {
+          body = diffBody(f.old_content, "deleted");
+        } else if (f.op === "renamed") {
+          body = '<pre class="diff-body">' + (f.new_content != null ? CodexUtils.escapeHtml(String(f.new_content)) : "(content unchanged)") + "</pre>";
+        } else {
+          // modified: show old then new side by side as two blocks
+          body = '<pre class="diff-body">' +
+            (f.old_content != null ? CodexUtils.escapeHtml(String(f.old_content)) : "(no previous content)") +
+            (f.new_content != null ? "\n──── after ────\n" + CodexUtils.escapeHtml(String(f.new_content)) : "") +
+            "</pre>";
+        }
+        return '<div class="diff-file"><div class="diff-file-head">' +
+          '<span class="op-pill ' + opClass(op) + '">' + CodexUtils.escapeHtml(op) + "</span>" + label +
+          "</div>" + body + "</div>";
+      }
+
+      function diffBody(content, kind) {
+        var prefix = kind === "added" ? "+" : "-";
+        var lines = String(content == null ? "" : content).split("\n");
+        var painted = lines.map(function (l) { return prefix + " " + l; }).join("\n");
+        return '<pre class="diff-body">' + CodexUtils.escapeHtml(painted) + "</pre>";
+      }
+
+      // ── History view (real git log via /git/log, fallback to /commits) ──
+      function loadHistory(force) {
+        if (state.loaded.history && !force) return;
+        state.loaded.history = true;
+        els.historyList.innerHTML = loadingBox("Loading history…");
+        var pid = encodeURIComponent(state.projectId);
+        // Prefer the real git history (/git/log) for true git SHAs; fall back
+        // to the DB commits (/commits) if git backend isn't populated yet.
+        CodexUtils.api(state.baseUrl, state.jwt, "GET", "/v1/projects/" + pid + "/git/log?depth=50")
+          .then(function (res) {
+            var entries = (res && res.data) ? res.data : [];
+            if (entries.length > 0) {
+              els.historySub.textContent = entries.length + " git commit" + (entries.length === 1 ? "" : "s") + " · " + (res.backend || "git");
+              renderGitHistory(entries, res.head);
+            } else {
+              // No git commits — fall back to DB ProjectCommit list.
+              return CodexUtils.api(state.baseUrl, state.jwt, "GET", "/v1/projects/" + pid + "/commits")
+                .then(function (dbRes) {
+                  var commits = CodexUtils.collection(dbRes);
+                  els.historySub.textContent = commits.length ? commits.length + " commit" + (commits.length === 1 ? "" : "s") : "";
+                  renderHistory(commits);
+                });
+            }
+          })
+          .catch(function () {
+            // /git/log failed — fall back to DB commits.
+            CodexUtils.api(state.baseUrl, state.jwt, "GET", "/v1/projects/" + pid + "/commits")
+              .then(function (dbRes) {
+                var commits = CodexUtils.collection(dbRes);
+                els.historySub.textContent = commits.length ? commits.length + " commit" + (commits.length === 1 ? "" : "s") : "";
+                renderHistory(commits);
+              })
+              .catch(function (err) {
+                els.historyList.innerHTML = stateBox("empty", "Could not load history", describeErr(err), true);
+              });
+          });
+      }
+
+      function renderGitHistory(entries, headSha) {
+        if (!entries.length) {
+          els.historyList.innerHTML = stateBox("empty", "No git commits yet", "This project has no real git history.");
+          return;
+        }
+        var html = '<ul class="commit-list" data-repo-commit-list>';
+        entries.forEach(function (e) {
+          var sha = (e.sha || "").slice(0, 12);
+          var msg = (e.message || "").split("\n")[0].slice(0, 80);
+          var author = (e.author && e.author.name) ? e.author.name : "—";
+          var ts = e.timestamp ? new Date(e.timestamp * 1000).toLocaleString() : "";
+          var isHead = headSha && sha === headSha.slice(0, 12);
+          html += '<li class="commit-item">';
+          html += '<div class="commit-msg">' + CodexUtils.escapeHtml(msg) + '</div>';
+          html += '<div class="commit-meta-row">';
+          html += '<span class="commit-id git-sha">' + CodexUtils.escapeHtml(sha) + '</span>';
+          if (isHead) html += '<span class="pill pill-good">HEAD</span>';
+          html += '<span>' + CodexUtils.escapeHtml(author) + '</span>';
+          html += '<span>' + CodexUtils.escapeHtml(ts) + '</span>';
+          html += '</div>';
+          html += '</li>';
+        });
+        html += '</ul>';
+        els.historyList.innerHTML = html;
+      }
+
+      function renderHistory(commits) {
+        if (!commits.length) {
+          els.historyList.innerHTML = stateBox("empty", "No commits yet", "This project has no recorded history.");
+          return;
+        }
+        els.historyList.innerHTML = '<ul class="commit-list" data-repo-commit-list>' +
+          commits.map(function (c) { return renderCommit(c); }).join("") + "</ul>";
+      }
+
+      function renderCommit(c) {
+        var v = (c.verification && c.verification.verified) ? "verified" : "unverified";
+        var vStatus = (c.verification && c.verification.status) || (v === "verified" ? "verified" : "unverified");
+        var actor = c.created_by_agent_id ? "agent" : (c.created_by_user_id ? "user" : "system");
+        var gitSha = c.git_sha ? '<span class="commit-id git-sha" title="real git SHA">' + CodexUtils.escapeHtml(c.git_sha.slice(0, 12)) + '</span>' : "";
+        var meta = '<span class="commit-id">' + CodexUtils.escapeHtml(CodexUtils.shortId(c.id)) + "</span>" +
+          (gitSha || "") +
+          '<span>' + CodexUtils.escapeHtml(actor) + "</span>" +
+          '<span>' + CodexUtils.escapeHtml(CodexUtils.formatDate(c.created_at)) + "</span>" +
+          (c.changed_files != null ? "<span>" + CodexUtils.escapeHtml(c.changed_files) + " file" + (c.changed_files === 1 ? "" : "s") + "</span>" : "") +
+          '<span class="verify-pill verify-' + v + '" title="' + CodexUtils.escapeAttr(vStatus) + '">' + CodexUtils.escapeHtml(vStatus) + "</span>";
+        return '<li class="commit-item">' +
+          '<span class="commit-dot"></span>' +
+          '<div class="commit-main">' +
+            '<div class="commit-msg">' + CodexUtils.escapeHtml(c.message || "(no message)") + "</div>" +
+            '<div class="commit-meta">' + meta + "</div>" +
+          "</div></li>";
+      }
+
+      // ── Tags view ──
+      function loadTags(force) {
+        if (state.loaded.tags && !force) return;
+        state.loaded.tags = true;
+        els.tagsList.innerHTML = loadingBox("Loading tags…");
+        var pid = encodeURIComponent(state.projectId);
+        CodexUtils.api(state.baseUrl, state.jwt, "GET", "/v1/projects/" + pid + "/tags?limit=100")
+          .then(function (res) {
+            var tags = CodexUtils.collection(res);
+            els.tagsSub.textContent = tags.length ? tags.length + " tag" + (tags.length === 1 ? "" : "s") : "";
+            renderTags(tags);
+          })
+          .catch(function (err) {
+            els.tagsList.innerHTML = stateBox("empty", "Could not load tags", describeErr(err), true);
+          });
+      }
+
+      function renderTags(tags) {
+        if (!tags.length) {
+          els.tagsList.innerHTML = stateBox("empty", "No tags yet", "This project has no tags. Tags are created from releases.");
+          return;
+        }
+        els.tagsList.innerHTML = '<ul class="tag-list" data-repo-tag-list>' +
+          tags.map(function (t) { return renderTag(t); }).join("") + "</ul>";
+      }
+
+      function renderTag(t) {
+        var badges = "";
+        if (t.draft) badges += '<span class="pill draft">Draft</span>';
+        if (t.prerelease) badges += '<span class="pill prerelease">Pre-release</span>';
+        var targetMsg = (t.target_commit && t.target_commit.message) || "";
+        var meta = '<span class="commit-id">' + CodexUtils.escapeHtml(CodexUtils.shortId(t.target_commit_id || (t.target_commit && t.target_commit.id))) + "</span>" +
+          (t.published_at ? "<span>published " + CodexUtils.escapeHtml(CodexUtils.formatDate(t.published_at)) + "</span>" : "<span>" + CodexUtils.escapeHtml(CodexUtils.formatDate(t.created_at)) + "</span>");
+        return '<li class="tag-item">' +
+          '<span class="tag-glyph">🏷</span>' +
+          '<div class="tag-main">' +
+            '<div class="tag-name">' + CodexUtils.escapeHtml(t.tag_name || "(untitled)") + ' <span class="tag-badges">' + badges + "</span></div>" +
+            (t.release_title ? '<div class="tag-title">' + CodexUtils.escapeHtml(t.release_title) + "</div>" : "") +
+            (targetMsg ? '<div class="tag-title">' + CodexUtils.escapeHtml(targetMsg.slice(0, 120)) + "</div>" : "") +
+            '<div class="tag-meta">' + meta + "</div>" +
+          "</div></li>";
+      }
+
+      // ── Error helper ──
+      function describeErr(err) {
+        if (!err) return "Unknown error";
+        var msg = err.message || String(err);
+        if (err.status === 401 || err.status === 403) return "You are not signed in or lack access to this project.";
+        if (err.status === 404) return "This project or resource was not found.";
+        return msg;
+      }
+
+      // ── Bootstrapping ──
+      function loadProject() {
+        if (!state.projectId) {
+          renderNoProject();
+          return;
+        }
+        var pid = encodeURIComponent(state.projectId);
+        Promise.all([
+          CodexUtils.api(state.baseUrl, state.jwt, "GET", "/v1/projects/" + pid).catch(function (e) { return null; }),
+          CodexUtils.api(state.baseUrl, state.jwt, "GET", "/v1/projects/" + pid + "/summary").catch(function (e) { return null; }),
+          CodexUtils.api(state.baseUrl, state.jwt, "GET", "/v1/projects/" + pid + "/branches").catch(function (e) { return { data: [] }; }),
+          CodexUtils.api(state.baseUrl, state.jwt, "GET", "/v1/projects/" + pid + "/languages").catch(function (e) { return null; })
+        ]).then(function (results) {
+          state.project = results[0];
+          state.summary = results[1];
+          state.branches = CodexUtils.collection(results[2]);
+          state.languages = results[3];
+
+          if (!state.project) {
+            renderNoProject();
+            return;
+          }
+          // Resolve selected branch (URL > default > first).
+          var p = params();
+          var urlBranch = p.get("branch");
+          if (urlBranch) state.selectedBranch = urlBranch;
+          else state.selectedBranch = defaultBranchName();
+
+          renderHeader();
+          renderToolbar();
+          // Apply initial view from URL.
+          var view = p.get("view");
+          state.currentPath = p.get("path") || "";
+          // Reset loaded flags because branch may differ.
+          state.loaded = { overview: false, files: false, compare: false, history: false, tags: false };
+          setView(view && VIEWS.indexOf(view) >= 0 ? view : "overview");
+        });
+      }
+
+      function renderNoProject() {
+        var html = stateBox("empty",
+          state.jwt ? "No project selected" : "Sign in required",
+          state.jwt
+            ? "Open a project from the dashboard, then use its repository link."
+            : "Sign in from the dashboard first, then open a project repository.");
+        els.repoContent.innerHTML = '<div class="view">' + html + "</div>";
+        els.repoName.textContent = "Repository";
+        els.repoDesc.textContent = "No project context available.";
+      }
+
+      // ── Event wiring ──
+      function wireEvents() {
+        var tabs = els.subnav.querySelectorAll(".subnav-tab");
+        for (var i = 0; i < tabs.length; i++) {
+          tabs[i].addEventListener("click", function (ev) {
+            setView(ev.currentTarget.getAttribute("data-view"));
+          });
+        }
+        els.branchSelect.addEventListener("change", function (ev) {
+          state.selectedBranch = ev.target.value;
+          syncUrl({ branch: state.selectedBranch === defaultBranchName() ? null : state.selectedBranch });
+          // Branch change invalidates cached views.
+          state.loaded = { overview: false, files: false, compare: false, history: false, tags: false };
+          renderArchive();
+          loadView(state.activeView, { force: true });
+        });
+        els.compareBase.addEventListener("change", function () { runCompare(); });
+        els.compareHead.addEventListener("change", function () { runCompare(); });
+
+        // Keyboard: number keys 1..5 switch views.
+        document.addEventListener("keydown", function (ev) {
+          if (ev.target && /^(INPUT|SELECT|TEXTAREA)$/.test(ev.target.tagName)) return;
+          if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+          var idx = parseInt(ev.key, 10);
+          if (idx >= 1 && idx <= VIEWS.length) {
+            setView(VIEWS[idx - 1]);
+          }
+        });
+      }
+
+      // ── Init ──
+      function init() {
+        loadConfig();
+        wireEvents();
+        renderCrosslinks();
+        loadProject();
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>

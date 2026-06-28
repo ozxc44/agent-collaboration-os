@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>任务中心 — Agent Collaboration OS</title>
+  <style>
+    :root { color-scheme:light; --bg:#eef2f6; --panel:#fff; --panel-2:#f8fafc; --line:#d7dee8; --text:#182230; --muted:#61708a; --soft:#7c8aa1; --accent:#2563eb; --good:#047857; --warn:#b45309; --bad:#b91c1c; --shadow:0 2px 8px rgba(24,34,48,.06); }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 Inter,system-ui,sans-serif; }
+    button { border:0; cursor:pointer; font:inherit; }
+    a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+    .navbar { background:var(--panel); border-bottom:1px solid var(--line); display:flex; align-items:center; gap:16px; padding:0 24px; height:52px; position:sticky; top:0; z-index:10; }
+    .navbar-brand { font-weight:700; font-size:15px; }
+    .navbar-nav { display:flex; gap:2px; flex:1; }
+    .nav-link { padding:6px 14px; border-radius:6px; font-size:13px; color:var(--muted); cursor:pointer; }
+    .nav-link:hover { background:var(--panel-2); color:var(--text); }
+    .nav-link.active { background:var(--accent); color:#fff; }
+    .navbar-right select { font-size:12px; padding:3px 8px; border:1px solid var(--line); border-radius:4px; }
+    .page { max-width:1200px; margin:0 auto; padding:24px; }
+    .kanban { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+    @media(max-width:900px){ .kanban { grid-template-columns:repeat(2,1fr); } }
+    @media(max-width:600px){ .kanban { grid-template-columns:1fr; } }
+    .column { background:var(--panel); border:1px solid var(--line); border-radius:10px; box-shadow:var(--shadow); min-height:200px; }
+    .col-head { padding:10px 14px; border-bottom:1px solid var(--line); font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:space-between; }
+    .col-count { font-size:11px; color:var(--muted); background:var(--panel-2); padding:1px 8px; border-radius:8px; }
+    .task-card { padding:10px 14px; border-bottom:1px solid var(--line); cursor:pointer; transition:background .1s; }
+    .task-card:hover { background:var(--panel-2); }
+    .task-card:last-child { border-bottom:none; }
+    .task-title { font-size:13px; font-weight:500; margin-bottom:4px; }
+    .task-meta { font-size:11px; color:var(--muted); display:flex; gap:6px; flex-wrap:wrap; }
+    .task-agent { display:inline-flex; align-items:center; gap:3px; }
+    .agent-dot { width:6px; height:6px; border-radius:50%; background:var(--good); }
+    .stale { color:var(--warn); }
+    .hidden { display:none !important; }
+    .empty { text-align:center; color:var(--soft); padding:24px; font-size:12px; }
+    /* Drawer */
+    .drawer-overlay { position:fixed; inset:0; background:rgba(0,0,0,.3); z-index:50; }
+    .drawer { position:fixed; right:0; top:0; bottom:0; width:480px; max-width:90vw; background:var(--panel); box-shadow:-4px 0 24px rgba(0,0,0,.1); z-index:51; overflow-y:auto; }
+    .drawer-head { padding:16px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; background:var(--panel); }
+    .drawer-body { padding:16px 20px; }
+    .detail-row { display:flex; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); font-size:13px; }
+    .detail-label { color:var(--muted); min-width:80px; font-weight:600; }
+    .detail-value { flex:1; word-break:break-all; }
+    .btn { padding:5px 12px; border-radius:6px; font-size:12px; font-weight:500; }
+    .btn-primary { background:var(--accent); color:#fff; }
+    .btn-ghost { background:transparent; color:var(--muted); border:1px solid var(--line); }
+    .btn-sm { padding:3px 8px; font-size:11px; }
+  </style>
+</head>
+<body>
+
+<div class="navbar">
+  <div class="navbar-brand">Agent Collaboration OS</div>
+  <div class="navbar-nav">
+    <a class="nav-link" href="workbench.html">工作台</a>
+    <span class="nav-link active">任务</span>
+    <a class="nav-link" href="repository.html">项目空间</a>
+    <a class="nav-link" href="agents.html">Agent</a>
+    <a class="nav-link" href="approvals.html">审批</a>
+  </div>
+  <div class="navbar-right"><select id="projectSelect"></select></div>
+</div>
+
+<div class="page">
+  <div class="kanban">
+    <div class="column"><div class="col-head">📋 待派发 <span class="col-count" id="cnt-dispatched">0</span></div><div id="col-dispatched"></div></div>
+    <div class="column"><div class="col-head">⚡ 执行中 <span class="col-count" id="cnt-running">0</span></div><div id="col-running"></div></div>
+    <div class="column"><div class="col-head">🔍 待验收 <span class="col-count" id="cnt-review">0</span></div><div id="col-review"></div></div>
+    <div class="column"><div class="col-head">✅ 已完成 <span class="col-count" id="cnt-done">0</span></div><div id="col-done"></div></div>
+  </div>
+</div>
+
+<div id="drawerOverlay" class="drawer-overlay hidden"></div>
+<div id="drawer" class="drawer hidden">
+  <div class="drawer-head"><h2 id="drawerTitle">任务详情</h2><button class="btn btn-ghost btn-sm" id="drawerClose">✕</button></div>
+  <div class="drawer-body" id="drawerBody"></div>
+</div>
+
+<script>
+(function(){
+  var SK='zz_runtime_dashboard_v1';
+  var API=window.location.origin.replace(/:\d+$/,':18080')+'/agent';
+  var state={jwt:'',projectId:'',tasks:[]};
+  function load(){try{return JSON.parse(localStorage.getItem(SK)||'{}')}catch{return{}}}
+  function save(){localStorage.setItem(SK,JSON.stringify({jwt:state.jwt,selectedProjectId:state.projectId}))}
+  function api(m,p,b){var o={method:m,headers:{'Content-Type':'application/json'}};if(state.jwt)o.headers.Authorization='Bearer '+state.jwt;if(b)o.body=JSON.stringify(b);return fetch(API+'/v1'+p,o).then(function(r){if(!r.ok)throw new Error(r.status);return r.json()})}
+  function esc(s){if(!s)return'';var d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+  function init(){
+    var s=load();state.jwt=s.jwt||'';state.projectId=s.selectedProjectId||'';
+    if(!state.jwt){window.location.href='workbench.html';return;}
+    api('GET','/projects?limit=100').then(function(res){
+      var ps=res.data||res||[];
+      var sel=document.getElementById('projectSelect');
+      sel.innerHTML=ps.map(function(p){return'<option value="'+p.id+'"'+(p.id===state.projectId?' selected':'')+'>'+esc(p.name)+'</option>'}).join('');
+      if(!state.projectId&&ps.length){state.projectId=ps[0].id;save();}
+      loadTasks();
+    }).catch(function(){window.location.href='workbench.html';});
+  }
+  document.getElementById('projectSelect').addEventListener('change',function(e){state.projectId=e.target.value;save();loadTasks();});
+
+  function loadTasks(){
+    api('GET','/projects/'+state.projectId+'/orchestration-tasks?limit=100').then(function(res){
+      state.tasks=res.data||[];
+      renderKanban();
+    }).catch(function(e){
+      ['dispatched','running','review','done'].forEach(function(c){document.getElementById('col-'+c).innerHTML='<div class="empty">加载失败</div>';});
+    });
+  }
+
+  function renderKanban(){
+    var cols={dispatched:[],running:[],review:[],done:[]};
+    state.tasks.forEach(function(t){
+      var s=t.status;
+      if(s==='dispatched'||s==='pending')cols.dispatched.push(t);
+      else if(s==='running'||s==='changes_requested'||s==='blocked')cols.running.push(t);
+      else if(s==='ready_for_review')cols.review.push(t);
+      else if(s==='approved'||s==='failed'||s==='cancelled')cols.done.push(t);
+    });
+    Object.keys(cols).forEach(function(key){
+      document.getElementById('cnt-'+key).textContent=cols[key].length;
+      var el=document.getElementById('col-'+key);
+      if(!cols[key].length){el.innerHTML='<div class="empty">无</div>';return;}
+      el.innerHTML=cols[key].map(function(t){
+        var stale=t.metadata&&t.metadata.stale;
+        var agentName=t.assigned_agent_name||'—';
+        var h='<div class="task-card" data-task-id="'+t.id+'">';
+        h+='<div class="task-title'+(stale?' stale':'')+'">'+esc(t.title||'Untitled')+'</div>';
+        h+='<div class="task-meta"><span class="task-agent"><span class="agent-dot"></span>'+esc(agentName)+'</span>';
+        if(stale)h+='<span class="stale">⚠ 停滞</span>';
+        if(t.status==='failed')h+='<span style="color:var(--bad);">失败</span>';
+        if(t.status==='changes_requested')h+='<span style="color:var(--warn);">需修改</span>';
+        h+='</div></div>';
+        return h;
+      }).join('');
+    });
+    document.querySelectorAll('.task-card').forEach(function(el){el.addEventListener('click',function(){openDrawer(el.getAttribute('data-task-id'));});});
+  }
+
+  function openDrawer(id){
+    var t=state.tasks.find(function(x){return x.id===id;});
+    if(!t)return;
+    document.getElementById('drawerTitle').textContent=t.title||'Task';
+    var stMap={pending:'待派发',dispatched:'已派发',running:'执行中',ready_for_review:'待验收',approved:'已通过',changes_requested:'需修改',blocked:'阻塞',failed:'失败',cancelled:'已取消'};
+    var rows=[
+      ['Task ID',t.id],
+      ['状态',stMap[t.status]||t.status],
+      ['目标',t.goal||'—'],
+      ['验收标准',(t.acceptance_criteria||[]).join(', ')||'—'],
+      ['分配给',t.assigned_agent_name||t.assigned_agent_id||'—'],
+      ['创建时间',t.created_at?new Date(t.created_at).toLocaleString():'—'],
+      ['更新时间',t.updated_at?new Date(t.updated_at).toLocaleString():'—'],
+      ['派发时间',t.dispatched_at?new Date(t.dispatched_at).toLocaleString():'—'],
+      ['Claim 时间',t.claimed_at?new Date(t.claimed_at).toLocaleString():'—'],
+      ['Orchestration',t.orchestration_id||'—'],
+    ];
+    var html=rows.map(function(r){return'<div class="detail-row"><span class="detail-label">'+esc(r[0])+'</span><span class="detail-value">'+esc(String(r[1]))+'</span></div>'}).join('');
+    if(t.review_notes)html+='<div class="detail-row"><span class="detail-label">审核备注</span><span class="detail-value">'+esc(t.review_notes)+'</span></div>';
+    if(t.requested_changes)html+='<div class="detail-row"><span class="detail-label">修改要求</span><span class="detail-value">'+esc(t.requested_changes)+'</span></div>';
+    html+='<div style="margin-top:12px;"><a class="btn btn-ghost btn-sm" href="workbench.html">返回工作台</a></div>';
+    document.getElementById('drawerBody').innerHTML=html;
+    document.getElementById('drawerOverlay').classList.remove('hidden');
+    document.getElementById('drawer').classList.remove('hidden');
+  }
+
+  function closeDrawer(){document.getElementById('drawerOverlay').classList.add('hidden');document.getElementById('drawer').classList.add('hidden');}
+  document.getElementById('drawerClose').addEventListener('click',closeDrawer);
+  document.getElementById('drawerOverlay').addEventListener('click',closeDrawer);
+
+  init();
+})();
+</script>
+</body>
+</html>

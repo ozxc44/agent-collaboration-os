@@ -1,0 +1,2660 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>项目工作台 - Agent Collaboration OS</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --panel-2: #f8fafc;
+      --line: #dde3ec;
+      --line-strong: #b8c4d4;
+      --text: #172033;
+      --muted: #5f6f88;
+      --soft: #8896aa;
+      --accent: #2563eb;
+      --accent-strong: #1d4ed8;
+      --good: #047857;
+      --warn: #b45309;
+      --bad: #b91c1c;
+      --shadow: 0 10px 26px rgba(23, 32, 51, 0.07);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    button, input, textarea, select { font: inherit; }
+    button { border: 0; cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: 0.55; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      font-weight: 800;
+    }
+
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      font-size: 16px;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .page {
+      width: min(960px, 100%);
+      margin: 0 auto;
+      padding: 18px;
+      display: grid;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .panel-head {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfe;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .panel-title {
+      font-weight: 800;
+      min-width: 0;
+      font-size: 16px;
+    }
+
+    .panel-body {
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .section {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .section h2 {
+      margin: 0;
+      font-size: 14px;
+      color: #111827;
+    }
+
+    .field {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 9px 10px;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 90px;
+      resize: vertical;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .row.wrap { flex-wrap: wrap; }
+    .grow { flex: 1 1 180px; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 36px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      background: #e8edf5;
+      color: #23324a;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .btn:hover { background: #dce4ef; }
+    .btn.primary { background: var(--accent); color: #fff; }
+    .btn.primary:hover { background: var(--accent-strong); }
+    .btn.good { background: var(--good); color: #fff; }
+    .btn.good:hover { background: #047857; }
+    .btn.warn { background: #d97706; color: #fff; }
+    .btn.warn:hover { background: #b45309; }
+    .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--muted); }
+    .btn.small { min-height: 28px; padding: 5px 9px; font-size: 12px; }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      max-width: 100%;
+      min-height: 22px;
+      padding: 2px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .pill.good { background: #ecfdf5; border-color: rgba(4, 120, 87, 0.24); color: var(--good); }
+    .pill.bad { background: #fef2f2; border-color: rgba(185, 28, 28, 0.22); color: var(--bad); }
+    .pill.warn { background: #fffbeb; border-color: rgba(180, 83, 9, 0.24); color: var(--warn); }
+    .pill.accent { background: #eff6ff; border-color: rgba(37, 99, 235, 0.24); color: var(--accent); }
+
+    .meta { color: var(--muted); font-size: 12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 10px;
+    }
+
+    .card {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      text-align: left;
+      cursor: pointer;
+      display: grid;
+      gap: 4px;
+    }
+
+    .card:hover, .card.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.09);
+    }
+
+    .card-title {
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .card-title span:first-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .list { display: grid; gap: 8px; }
+
+    .item {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      display: grid;
+      gap: 4px;
+    }
+
+    .item-title {
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .empty {
+      padding: 18px;
+      color: var(--soft);
+      text-align: center;
+      border: 1px dashed var(--line-strong);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .step-bar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+    }
+
+    .step {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--soft);
+    }
+
+    .step.done { color: var(--good); }
+    .step.now { color: var(--accent); }
+
+    .step-arrow { color: var(--line-strong); }
+
+    .identity-box {
+      padding: 10px;
+      border: 2px solid var(--warn);
+      border-radius: 6px;
+      background: #fffbeb;
+      word-break: break-all;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      user-select: all;
+    }
+
+    .hidden { display: none !important; }
+
+    .collapsible-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+    }
+
+    .collapsible-body {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-top: 0;
+      border-radius: 0 0 8px 8px;
+      background: #fff;
+      display: grid;
+      gap: 10px;
+    }
+
+    .log {
+      min-height: 120px;
+      max-height: 220px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: #0f172a;
+      color: #dbeafe;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+
+    #invitePromptBox {
+      min-height: 320px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      background: #0f172a;
+      color: #dbeafe;
+    }
+
+    /* Overview section */
+    .overview-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 8px;
+    }
+
+    .stat-card {
+      padding: 10px 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 22px;
+      font-weight: 900;
+      line-height: 1.2;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .overview-queue {
+      display: grid;
+      gap: 6px;
+    }
+
+    .queue-item {
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .queue-item-title {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .queue-item-title a {
+      color: var(--accent);
+    }
+
+    .queue-item-title a:hover {
+      text-decoration: underline;
+    }
+
+    .overview-activity {
+      display: grid;
+      gap: 4px;
+    }
+
+    .activity-item {
+      padding: 6px 10px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .activity-item:last-child {
+      border-bottom: 0;
+    }
+
+    .activity-item .pill {
+      flex-shrink: 0;
+    }
+
+    .overview-files-mini {
+      display: grid;
+      gap: 4px;
+    }
+
+    .mini-file {
+      padding: 4px 8px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .mini-file a {
+      color: var(--accent);
+    }
+
+    .mini-file a:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 640px) {
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .top-actions { justify-content: flex-start; }
+      .page { padding: 10px; }
+      .card-grid { grid-template-columns: 1fr; }
+      .overview-stats { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">P</div>
+      <div>
+        <div>项目工作台</div>
+        <div class="meta">Agent Collaboration OS · 局域网 NAS</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span id="statusPill" class="pill warn">未连接</span>
+      <a class="btn ghost small" href="./owner-home.html">返回个人主页</a>
+      <a id="projectSpaceLink" class="btn ghost small hidden" href="./project-space.html">项目空间</a>
+      <a class="btn ghost small" href="./agent-start.html">Agent 启动引导</a>
+      <a class="btn ghost small" href="./index.html">高级控制台</a>
+      <button id="toggleAdvancedBtn" class="btn ghost small">高级设置</button>
+      <div id="topbarUser" class="row wrap hidden" style="gap:6px;align-items:center;min-width:0;">
+        <div id="topbarAvatar" style="width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:800;font-size:12px;flex:0 0 24px;">?</div>
+        <span id="topbarUserName" class="meta" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;"></span>
+        <button id="topbarLogoutBtn" class="btn ghost small">退出登录</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="page">
+    <div id="stepBar" class="step-bar hidden">
+      <span class="step" id="stepAuth">1 登录</span>
+      <span class="step-arrow">→</span>
+      <span class="step" id="stepProject">2 项目</span>
+      <span class="step-arrow">→</span>
+      <span class="step" id="stepAgent">3 Agent</span>
+      <span class="step-arrow">→</span>
+      <span class="step" id="stepTask">4 分配任务</span>
+      <span class="step-arrow">→</span>
+      <span class="step" id="stepProgress">5 进度</span>
+    </div>
+
+    <section id="authPanel" class="panel">
+      <div class="panel-head">
+        <div class="panel-title">开始</div>
+        <span class="meta">新用户将自动注册</span>
+      </div>
+      <div class="panel-body">
+        <div id="authFormBox" class="section">
+          <div class="split row wrap">
+            <div class="field grow">
+              <label for="authEmail">邮箱或用户名</label>
+              <input id="authEmail" type="text" autocomplete="username" placeholder="you@example.com 或 用户名">
+            </div>
+            <div class="field grow">
+              <label for="authPassword">密码</label>
+              <input id="authPassword" type="password" autocomplete="current-password" placeholder="不少于 8 位">
+            </div>
+          </div>
+          <div class="field">
+            <label for="authDisplayName">昵称（可选）</label>
+            <input id="authDisplayName" autocomplete="name" placeholder="管理员">
+          </div>
+          <div class="row wrap">
+            <button id="loginBtn" class="btn primary">登录 / 注册</button>
+            <button id="continueOfflineBtn" class="btn ghost">离线浏览（只读）</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="projectPanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">项目</div>
+        <button id="newProjectToggleBtn" class="btn small">新建项目</button>
+      </div>
+      <div class="panel-body">
+        <form id="projectForm" class="section hidden" autocomplete="off">
+          <div class="field">
+            <label for="projectName">项目名称</label>
+            <input id="projectName" required maxlength="128" placeholder="例如：家庭 NAS 助手">
+          </div>
+          <div class="field">
+            <label for="projectDescription">描述（可选）</label>
+            <input id="projectDescription" maxlength="1024" placeholder="一句话说明用途">
+          </div>
+          <div class="row wrap">
+            <button class="btn good" type="submit">创建</button>
+            <button id="cancelProjectBtn" class="btn ghost small" type="button">取消</button>
+          </div>
+        </form>
+        <div id="projectList" class="card-grid" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section id="overviewPanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">项目概览</div>
+        <div class="row">
+          <span id="overviewSourcePill" class="pill"></span>
+          <button id="refreshOverviewBtn" class="btn small">刷新</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div id="overviewStats" class="overview-stats"></div>
+        <div id="overviewQueueSection" class="section hidden">
+          <h2>需要关注</h2>
+          <div id="overviewQueue" class="overview-queue"></div>
+        </div>
+        <div id="overviewFilesSection" class="section hidden">
+          <h2>最新文件</h2>
+          <div id="overviewFiles" class="overview-files-mini"></div>
+          <div id="overviewFilesLink" style="margin-top:6px;"></div>
+        </div>
+        <div id="overviewActivitySection" class="section hidden">
+          <h2>最近活动</h2>
+          <div id="overviewActivity" class="overview-activity"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="agentPanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">Agent</div>
+        <div class="row">
+          <span id="agentCountPill" class="pill">0 个</span>
+          <span id="onlineCountPill" class="pill good">0 在线</span>
+        </div>
+        <div class="row">
+          <button id="inviteAgentBtn" class="btn small">复制 Agent 加入指引</button>
+          <button id="addAgentBtn" class="btn small">添加 Agent</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div id="agentEmptyBox" class="section">
+          <div class="meta">还没有 agent。创建一个即可分配任务。</div>
+          <button id="quickAgentBtn" class="btn primary">快速创建 Agent</button>
+        </div>
+        <form id="agentForm" class="section hidden" autocomplete="off">
+          <div class="field">
+            <label for="agentName">Agent 名称</label>
+            <input id="agentName" required maxlength="64" placeholder="例如：文档助手">
+          </div>
+          <div class="field">
+            <label for="agentDescription">用途说明（可选）</label>
+            <input id="agentDescription" maxlength="512" placeholder="例如：整理文档、回答常见问题">
+          </div>
+          <div class="row wrap">
+            <button class="btn good" type="submit">注册 Agent</button>
+            <button id="cancelAgentBtn" class="btn ghost small" type="button">取消</button>
+          </div>
+        </form>
+        <div id="agentList" class="list" aria-live="polite"></div>
+        <div id="identityPanel" class="section hidden">
+          <h2>Agent 身份密钥（仅显示一次）</h2>
+          <div id="identityBox" class="identity-box"></div>
+          <div class="row wrap" style="margin-top:8px">
+            <button id="copyIdentityBtn" class="btn primary small">复制</button>
+            <button id="downloadIdentityBtn" class="btn good small">下载身份文件</button>
+            <button id="dismissIdentityBtn" class="btn ghost small">隐藏</button>
+          </div>
+          <div class="meta" style="margin-top:8px">
+            可在 <a href="./agent-start.html">Agent 入口</a> 页面查看完整启动指引。
+          </div>
+        </div>
+        <div id="invitePromptPanel" class="section hidden">
+          <h2>Agent 加入指引（发送给 Agent 运维人员，不含密钥）</h2>
+          <textarea id="invitePromptBox" readonly spellcheck="false"></textarea>
+          <div class="row wrap" style="margin-top:8px">
+            <button id="copyInvitePromptBtn" class="btn primary small">复制到剪贴板</button>
+            <button id="dismissInvitePromptBtn" class="btn ghost small">隐藏</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="joinRequestPanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">加入申请</div>
+        <span class="meta">仅管理员可见</span>
+      </div>
+      <div class="panel-body">
+        <div id="joinRequestList" class="list" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section id="memberPanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">项目成员</div>
+        <button id="refreshMembersBtn" class="btn small">刷新</button>
+      </div>
+      <div class="panel-body">
+        <div id="memberList" class="list" aria-live="polite"></div>
+
+        <!-- Human invite/search area -->
+        <div id="humanInviteSection" class="section">
+          <h2>添加注册用户</h2>
+          <div class="field">
+            <label for="humanSearchInput">搜索用户（邮箱或昵称）</label>
+            <div class="row wrap">
+              <input id="humanSearchInput" type="text" placeholder="输入邮箱或昵称搜索" style="flex:1 1 200px;">
+              <button id="humanSearchBtn" class="btn primary small">搜索</button>
+            </div>
+          </div>
+          <div id="humanSearchResults" class="list" aria-live="polite"></div>
+          <div id="humanSearchEmpty" class="empty hidden">输入关键词搜索注册用户</div>
+        </div>
+
+        <!-- Unregistered human onboarding prompt -->
+        <div id="humanOnboardSection" class="section">
+          <h2>邀请未注册人员</h2>
+          <div id="humanOnboardPromptBox" class="identity-box" style="white-space:pre-wrap;user-select:text;"></div>
+          <div class="row wrap" style="margin-top:8px">
+            <button id="copyHumanOnboardPromptBtn" class="btn primary small">复制到剪贴板</button>
+          </div>
+          <div class="meta" style="margin-top:6px">将此文字发送给需要加入的同事，对方打开工作台 URL 后注册/登录，再把注册邮箱发给项目 Owner 添加。</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="taskPanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">任务</div>
+        <span class="meta">分配协作目标给 agent</span>
+      </div>
+      <div class="panel-body">
+        <form id="taskForm" class="section" autocomplete="off">
+          <div class="field">
+            <label for="taskTitle">任务标题</label>
+            <input id="taskTitle" required maxlength="256" placeholder="例如：整理本周会议纪要">
+          </div>
+          <div class="field">
+            <label for="taskObjective">任务描述 / 目标</label>
+            <textarea id="taskObjective" placeholder="描述任务需要达成的结果"></textarea>
+          </div>
+          <div class="field">
+            <label for="taskMainAgent">主负责人 Agent</label>
+            <select id="taskMainAgent"></select>
+          </div>
+          <div class="field">
+            <label>协作 Agent（多选）</label>
+            <div id="taskWorkerChecks" class="row wrap" style="gap:6px"></div>
+          </div>
+          <div id="taskOfflineWarning" class="empty hidden" style="border-color:rgba(180,83,9,0.35);color:var(--warn);background:#fffbeb;">
+            当前没有在线 agent。请先确保至少一个 agent 已连接，或刷新页面查看最新状态。
+          </div>
+          <button id="taskSubmitBtn" class="btn good" type="submit">创建任务</button>
+        </form>
+        <div id="taskList" class="list" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section id="progressPanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">进度</div>
+        <button id="refreshProgressBtn" class="btn small">刷新</button>
+      </div>
+      <div class="panel-body">
+        <div id="progressList" class="list" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section id="workloadPanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">工作量统计</div>
+        <button id="refreshWorkloadBtn" class="btn small">刷新</button>
+      </div>
+      <div class="panel-body">
+        <div id="workloadSummary" class="meta" style="margin-bottom:10px;"></div>
+        <div id="workloadAgentList" class="list" aria-live="polite"></div>
+        <div style="margin-top:10px;">
+          <button id="workloadCsvBtn" class="btn ghost small" style="display:none;">下载 CSV</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="healthPanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">项目健康</div>
+        <button id="refreshHealthBtn" class="btn small">刷新</button>
+      </div>
+      <div class="panel-body">
+        <div id="healthGrid" class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;"></div>
+        <div id="healthAgentRows" class="list" aria-live="polite" style="margin-top:8px;"></div>
+      </div>
+    </section>
+
+    <section id="filesPanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">项目空间文件</div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input id="filesPathFilter" class="input" style="width:240px;font-size:12px;" placeholder="路径前缀,如 deliverables/ 或 .agent/" />
+          <button id="refreshFilesBtn" class="btn small">刷新</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div id="filesList" class="list" aria-live="polite"></div>
+        <div id="fileContentView" class="hidden" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div id="fileViewPath" class="mono" style="font-size:12px;color:var(--muted);word-break:break-all;"></div>
+            <button id="closeFileViewBtn" class="btn ghost small">关闭</button>
+          </div>
+          <pre id="fileViewContent" style="background:var(--surface-2);padding:10px;border-radius:6px;max-height:420px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-word;"></pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="rewardPreviewPanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">贡献预览</div>
+        <div class="row">
+          <button id="refreshRewardPreviewBtn" class="btn small">刷新</button>
+          <button id="recalculateRewardPreviewBtn" class="btn small warn">重新计算</button>
+          <button id="rewardPreviewCsvBtn" class="btn ghost small">导出 CSV</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div id="rewardPreviewSummary" class="meta" style="margin-bottom:10px;"></div>
+        <div id="rewardPreviewList" class="list" aria-live="polite"></div>
+        <div class="meta" style="margin-top:8px;">贡献预览仅用于说明各 agent 的工作占比，不构成任何结算、兑付或权益承诺。</div>
+      </div>
+    </section>
+
+    <div id="advancedPanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">高级设置</div>
+      </div>
+      <div class="panel-body">
+        <div class="section">
+          <h2>平台地址</h2>
+          <div class="field">
+            <label for="baseUrl">Base URL</label>
+            <input id="baseUrl" spellcheck="false" autocomplete="url" placeholder="http://<your-platform-host>:18080/agent">
+          </div>
+          <div class="meta">局域网 NAS 默认地址，通常无需修改。</div>
+        </div>
+        <div class="section">
+          <h2>身份令牌</h2>
+          <div class="field">
+            <label for="jwt">JWT Token（高级调试用）</label>
+            <input id="jwt" type="password" autocomplete="off" spellcheck="false" placeholder="eyJ...">
+          </div>
+          <div class="row wrap">
+            <button id="saveConfigBtn" class="btn">保存配置</button>
+            <button id="toggleTokenBtn" class="btn ghost small">显示令牌</button>
+            <button id="clearStorageBtn" class="btn ghost small">清除本地数据</button>
+          </div>
+        </div>
+        <div class="section">
+          <h2>Agent 高级选项</h2>
+          <div class="field">
+            <label for="endpointUrl">Endpoint URL（可选）</label>
+            <input id="endpointUrl" spellcheck="false" placeholder="http://127.0.0.1:7781/zz/v1/invoke">
+          </div>
+          <div class="field">
+            <label for="systemPrompt">系统提示词（可选）</label>
+            <textarea id="systemPrompt" placeholder="定义 agent 的角色和行为边界"></textarea>
+          </div>
+        </div>
+        <div class="section">
+          <h2>运行日志</h2>
+          <div id="logBox" class="log" aria-live="polite"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var STORAGE_KEY = "zz_human_workspace_simple_v1";
+      var DEFAULT_BASE_URL = window.location.protocol === "file:" ? "http://127.0.0.1:8000" : window.location.origin + "/agent";
+      var DEFAULT_SCOPES = ["agent:read", "sessions:read", "messages:write", "health:write"];
+      var IDENTITY_SCHEMA = "agent-platform.identity.v1";
+
+      var state = {
+        baseUrl: DEFAULT_BASE_URL,
+        jwt: "",
+        principal: null,
+        projects: [],
+        agents: [],
+        orchestrations: [],
+        joinRequests: [],
+        members: [],
+        selectedProjectId: "",
+        busy: false,
+        freshIdentity: null,
+        offline: false,
+        rewardPreview: null,
+        healthMetrics: null,
+        humanSearchResults: [],
+        humanInviting: null,
+        urlProjectId: "",
+        autoRefreshTimer: null,
+        files: [],
+        fileViewing: null,
+        filesTotal: 0,
+        filesLoadingMore: false,
+        projectOverview: null
+      };
+
+      function $(id) { return document.getElementById(id); }
+
+      var els = {
+        baseUrl: $("baseUrl"),
+        jwt: $("jwt"),
+        statusPill: $("statusPill"),
+        authPanel: $("authPanel"),
+        authFormBox: $("authFormBox"),
+        topbarUser: $("topbarUser"),
+        topbarUserName: $("topbarUserName"),
+        topbarAvatar: $("topbarAvatar"),
+        topbarLogoutBtn: $("topbarLogoutBtn"),
+        projectSpaceLink: $("projectSpaceLink"),
+        projectPanel: $("projectPanel"),
+        projectList: $("projectList"),
+        projectForm: $("projectForm"),
+        agentPanel: $("agentPanel"),
+        agentList: $("agentList"),
+        agentEmptyBox: $("agentEmptyBox"),
+        agentForm: $("agentForm"),
+        agentCountPill: $("agentCountPill"),
+        onlineCountPill: $("onlineCountPill"),
+        identityPanel: $("identityPanel"),
+        identityBox: $("identityBox"),
+        invitePromptPanel: $("invitePromptPanel"),
+        invitePromptBox: $("invitePromptBox"),
+        joinRequestPanel: $("joinRequestPanel"),
+        joinRequestList: $("joinRequestList"),
+        memberPanel: $("memberPanel"),
+        memberList: $("memberList"),
+        taskPanel: $("taskPanel"),
+        taskMainAgent: $("taskMainAgent"),
+        taskWorkerChecks: $("taskWorkerChecks"),
+        taskOfflineWarning: $("taskOfflineWarning"),
+        taskList: $("taskList"),
+        progressPanel: $("progressPanel"),
+        progressList: $("progressList"),
+        advancedPanel: $("advancedPanel"),
+        workloadPanel: $("workloadPanel"),
+        workloadSummary: $("workloadSummary"),
+        workloadAgentList: $("workloadAgentList"),
+        workloadCsvBtn: $("workloadCsvBtn"),
+        rewardPreviewPanel: $("rewardPreviewPanel"),
+        rewardPreviewSummary: $("rewardPreviewSummary"),
+        rewardPreviewList: $("rewardPreviewList"),
+        refreshRewardPreviewBtn: $("refreshRewardPreviewBtn"),
+        recalculateRewardPreviewBtn: $("recalculateRewardPreviewBtn"),
+        rewardPreviewCsvBtn: $("rewardPreviewCsvBtn"),
+        stepBar: $("stepBar"),
+        logBox: $("logBox"),
+        healthPanel: $("healthPanel"),
+        healthGrid: $("healthGrid"),
+        healthAgentRows: $("healthAgentRows"),
+        filesPanel: $("filesPanel"),
+        filesList: $("filesList"),
+        filesPathFilter: $("filesPathFilter"),
+        refreshFilesBtn: $("refreshFilesBtn"),
+        fileContentView: $("fileContentView"),
+        fileViewPath: $("fileViewPath"),
+        fileViewContent: $("fileViewContent"),
+        closeFileViewBtn: $("closeFileViewBtn"),
+        humanInviteSection: $("humanInviteSection"),
+        humanSearchInput: $("humanSearchInput"),
+        humanSearchBtn: $("humanSearchBtn"),
+        humanSearchResults: $("humanSearchResults"),
+        humanSearchEmpty: $("humanSearchEmpty"),
+        humanOnboardSection: $("humanOnboardSection"),
+        humanOnboardPromptBox: $("humanOnboardPromptBox"),
+        copyHumanOnboardPromptBtn: $("copyHumanOnboardPromptBtn"),
+        refreshMembersBtn: $("refreshMembersBtn"),
+        overviewPanel: $("overviewPanel"),
+        overviewStats: $("overviewStats"),
+        overviewQueueSection: $("overviewQueueSection"),
+        overviewQueue: $("overviewQueue"),
+        overviewFilesSection: $("overviewFilesSection"),
+        overviewFiles: $("overviewFiles"),
+        overviewFilesLink: $("overviewFilesLink"),
+        overviewActivitySection: $("overviewActivitySection"),
+        overviewActivity: $("overviewActivity"),
+        overviewSourcePill: $("overviewSourcePill"),
+        refreshOverviewBtn: $("refreshOverviewBtn"),
+      };
+
+      function readStorage() {
+        try { return window.localStorage.getItem(STORAGE_KEY); } catch (e) { return ""; }
+      }
+      function writeStorage(value) {
+        try { window.localStorage.setItem(STORAGE_KEY, value); } catch (e) {}
+      }
+      function removeStorage() {
+        try { window.localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+      }
+
+      function loadStoredConfig() {
+        try {
+          var saved = JSON.parse(readStorage() || "{}");
+          state.baseUrl = saved.baseUrl || DEFAULT_BASE_URL;
+          state.jwt = saved.jwt || "";
+          state.selectedProjectId = saved.selectedProjectId || "";
+        } catch (e) {}
+        els.baseUrl.value = state.baseUrl;
+        els.jwt.value = state.jwt;
+        // Read project_id from URL
+        try {
+          var params = new URLSearchParams(window.location.search);
+          state.urlProjectId = params.get("project_id") || "";
+        } catch (e) {
+          state.urlProjectId = "";
+        }
+      }
+
+      function saveStoredConfig() {
+        state.baseUrl = normalizeBaseUrl(els.baseUrl.value);
+        state.jwt = els.jwt.value.trim();
+        writeStorage(JSON.stringify({ baseUrl: state.baseUrl, jwt: state.jwt, selectedProjectId: state.selectedProjectId }));
+      }
+
+      function normalizeBaseUrl(value) {
+        return (value || DEFAULT_BASE_URL).trim().replace(/\/+$/, "");
+      }
+
+      function selectedProject() {
+        return state.projects.find(function (p) { return p.id === state.selectedProjectId; }) || null;
+      }
+
+      function collection(payload) {
+        if (Array.isArray(payload)) return payload;
+        if (payload && Array.isArray(payload.data)) return payload.data;
+        return [];
+      }
+
+      function authHeaders(extra) {
+        var headers = Object.assign({ "Content-Type": "application/json" }, extra || {});
+        if (state.jwt) headers.Authorization = "Bearer " + state.jwt;
+        return headers;
+      }
+
+      function api(method, path, body) {
+        state.baseUrl = normalizeBaseUrl(els.baseUrl.value);
+        state.jwt = els.jwt.value.trim();
+        var options = { method: method, headers: authHeaders() };
+        if (body !== undefined) options.body = JSON.stringify(body);
+        return fetch(state.baseUrl + path, options).then(function (response) {
+          return response.text().then(function (text) {
+            var payload = null;
+            if (text) { try { payload = JSON.parse(text); } catch (e) { payload = { detail: text }; } }
+            if (!response.ok) throw new Error(formatApiError(response.status, payload));
+            return payload;
+          });
+        });
+      }
+
+      function authApi(method, path, body) {
+        state.baseUrl = normalizeBaseUrl(els.baseUrl.value);
+        return fetch(state.baseUrl + path, {
+          method: method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+        }).then(function (response) {
+          return response.text().then(function (text) {
+            var payload = text ? JSON.parse(text) : null;
+            if (!response.ok) throw new Error(formatApiError(response.status, payload));
+            return payload;
+          });
+        });
+      }
+
+      function formatApiError(status, payload) {
+        if (!payload) return "HTTP " + status;
+        if (typeof payload.detail === "string") return "HTTP " + status + ": " + payload.detail;
+        if (Array.isArray(payload.detail)) return "HTTP " + status + ": " + payload.detail.map(function (i) { return i.msg || JSON.stringify(i); }).join("; ");
+        if (payload.message) return "HTTP " + status + ": " + payload.message;
+        return "HTTP " + status + ": " + JSON.stringify(payload);
+      }
+
+      function run(label, task) {
+        if (state.busy) return Promise.resolve();
+        state.busy = true;
+        setStatus("运行中", "warn");
+        return Promise.resolve().then(task).then(function (result) {
+          setStatus("就绪", "good");
+          return result;
+        }).catch(function (err) {
+          setStatus("错误", "bad");
+          log(label + " 失败: " + err.message, "error");
+          throw err;
+        }).finally(function () {
+          state.busy = false;
+          render();
+        });
+      }
+
+      function setStatus(text, kind) {
+        var el = els.statusPill;
+        el.textContent = text;
+        el.className = "pill " + (kind || "");
+      }
+
+      function log(message, level) {
+        var line = "[" + new Date().toLocaleTimeString() + "] " + (level ? level.toUpperCase() + " " : "") + message;
+        if (els.logBox) els.logBox.textContent = line + "\n" + els.logBox.textContent;
+      }
+
+      function escapeHtml(value) {
+        return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      }
+      function escapeAttr(value) { return escapeHtml(value).replace(/`/g, "&#96;"); }
+      function emptyHtml(message) { return '<div class="empty">' + escapeHtml(message) + '</div>'; }
+
+      function statusPill(status) {
+        var value = status || "unknown";
+        var cls = value === "healthy" || value === "online" || value === "active" || value === "idle" || value === "running" ? "good" :
+          value === "degraded" || value === "stale" || value === "archived" || value === "closed" || value === "offline" ? "warn" :
+          value === "down" || value === "error" ? "bad" : "";
+        return '<span class="pill ' + cls + '">' + escapeHtml(value) + '</span>';
+      }
+
+      function agentCanDispatch(agent) {
+        return !!(agent && (agent.dispatchable === true || agent.is_online === true));
+      }
+
+      function agentPresence(agent) {
+        if (!agent) return "offline";
+        if (typeof agent.presence === "string") return agent.presence;
+        if (agentCanDispatch(agent)) return "online";
+        return "offline";
+      }
+
+      function agentLastSeen(agent) {
+        if (!agent || !agent.last_heartbeat_at) return "未连接";
+        if (typeof agent.heartbeat_age_ms === "number") {
+          var seconds = Math.max(0, Math.floor(agent.heartbeat_age_ms / 1000));
+          if (seconds < 60) return seconds + " 秒前";
+          if (seconds < 3600) return Math.floor(seconds / 60) + " 分钟前";
+          return Math.floor(seconds / 3600) + " 小时前";
+        }
+        return new Date(agent.last_heartbeat_at).toLocaleString();
+      }
+
+      function agentIdentityCode(agent) {
+        if (!agent) return "-";
+        return agent.identity_code || agent.api_key_prefix || (agent.id ? agent.id.slice(0, 8) : "-");
+      }
+
+      function agentLifecycle(agent) {
+        var ls = agent && agent.lifecycle_status;
+        if (!ls && agent && agent.status === "inactive") return "retired";
+        if (!ls && agent && agent.status === "error") return "recovery_pending";
+        return ls || "active";
+      }
+
+      function lifecycleLabel(ls) {
+        var map = {
+          active: "活跃",
+          recovery_pending: "恢复中",
+          retired: "已退役",
+          superseded: "已替换"
+        };
+        return map[ls] || ls;
+      }
+
+      function lifecyclePillClass(ls) {
+        if (ls === "active") return "good";
+        if (ls === "recovery_pending") return "warn";
+        if (ls === "retired" || ls === "superseded") return "bad";
+        return "";
+      }
+
+      function sortAgents(agents) {
+        var lsScore = function (a) {
+          var ls = agentLifecycle(a);
+          if (ls === "active") return 0;
+          if (ls === "recovery_pending") return 1;
+          if (ls === "superseded") return 2;
+          if (ls === "retired") return 3;
+          return 4;
+        };
+        var psScore = function (a) {
+          var p = agentPresence(a);
+          if (p === "online") return 0;
+          if (p === "stale") return 1;
+          return 2;
+        };
+        return agents.slice().sort(function (a, b) {
+          var d = lsScore(a) - lsScore(b);
+          if (d !== 0) return d;
+          d = psScore(a) - psScore(b);
+          if (d !== 0) return d;
+          return (a.name || "").localeCompare(b.name || "");
+        });
+      }
+
+      function rotateAgentKey(agentId) {
+        if (!state.selectedProjectId) return;
+        run("轮换密钥", function () {
+          return api("POST", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/agents/" + encodeURIComponent(agentId) + "/rotate-key")
+            .then(function (result) {
+              var agent = state.agents.find(function (a) { return a.id === agentId; });
+              if (agent) { agent.api_key = result.api_key; agent.api_key_prefix = result.api_key_prefix; agent.identity_code = result.identity_code; }
+              state.freshIdentity = buildIdentity(result);
+              showIdentityPanel(result, "新密钥已轮换（仅显示一次）");
+              log("已轮换 Agent 密钥: " + (result.name || agentId));
+            });
+        }).catch(function () {});
+      }
+
+      function retireAgent(agentId) {
+        if (!state.selectedProjectId) return;
+        var agent = state.agents.find(function (a) { return a.id === agentId; });
+        var name = agent ? agent.name : agentId;
+        if (!confirm("确定要退役 Agent「" + name + "」吗？\n\n退役后该 Agent 将不再接收新任务，但历史记录保留。")) return;
+        run("退役 Agent", function () {
+          return api("POST", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/agents/" + encodeURIComponent(agentId) + "/retire")
+            .then(function () {
+              return loadAgentsRaw();
+            }).then(function () {
+              log("已退役 Agent: " + name);
+            });
+        }).catch(function () {});
+      }
+
+      function setProjectMainAgent(agentId) {
+        if (!state.selectedProjectId) return;
+        run("设置主 Agent", function () {
+          return api("PATCH", "/v1/projects/" + encodeURIComponent(state.selectedProjectId), { main_agent_id: agentId })
+            .then(function (result) {
+              var project = state.projects.find(function (p) { return p.id === state.selectedProjectId; });
+              if (project) project.main_agent_id = result.main_agent_id;
+              log("已设置项目主 Agent");
+            });
+        }).catch(function (err) {
+          if (err.message && (err.message.indexOf("422") !== -1 || err.message.indexOf("400") !== -1)) {
+            log("后端暂不支持设置项目主 Agent，请先升级后端", "warn");
+          }
+        });
+      }
+
+      function randomSecret() {
+        var bytes = new Uint8Array(24);
+        window.crypto.getRandomValues(bytes);
+        return Array.prototype.map.call(bytes, function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+      }
+
+      function slug(value) {
+        return String(value || "identity").toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "identity";
+      }
+
+      function buildIdentity(agent) {
+        var project = selectedProject();
+        var now = new Date().toISOString();
+        var agentKey = agent && typeof agent.api_key === "string" ? agent.api_key : undefined;
+        var credentials = {};
+        if (state.jwt) credentials.user_token = state.jwt;
+        if (agentKey) credentials.agent_key = agentKey;
+        return {
+          schema: IDENTITY_SCHEMA,
+          created_at: now,
+          platform: { name: "Agent Collaboration OS", base_url: normalizeBaseUrl(els.baseUrl.value) },
+          user: state.principal ? { id: state.principal.id, username: state.principal.username, display_name: state.principal.display_name || null } : null,
+          project: project ? { id: project.id, name: project.name, visibility: project.visibility || "private" } : null,
+          agent: agent ? { id: agent.id, name: agent.name, project_id: agent.project_id || state.selectedProjectId } : null,
+          credentials: credentials,
+          openclaw: {
+            plugin_id: "agent-social-platform",
+            package: "@zhuzeyang/openclaw-agent-social-platform",
+            config: { baseUrl: normalizeBaseUrl(els.baseUrl.value), userToken: state.jwt || undefined, agentKey: agentKey, timeoutMs: 30000 }
+          }
+        };
+      }
+
+      function downloadJson(filename, payload) {
+        var blob = new Blob([JSON.stringify(payload, null, 2) + "\n"], { type: "application/json" });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement("a");
+        link.href = url; link.download = filename;
+        document.body.appendChild(link); link.click(); link.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      function buildInvitePrompt() {
+        var project = selectedProject();
+        if (!project) return "";
+        var baseUrl = normalizeBaseUrl(els.baseUrl.value);
+        var apiBase = baseUrl + "/v1";
+        var inviteUrl = baseUrl + "/agent-start.html?project_id=" + encodeURIComponent(project.id) + "&project_name=" + encodeURIComponent(project.name || "") + "&requested_role=member";
+        return [
+          "你被邀请加入一个 Agent 协作平台项目。请以 Agent 身份自主完成接入，不要把流程交给人类操作。",
+          "",
+          "## 平台与认证（先读这段，避免误装 CLI / 误解析 HTML）",
+          "- 平台 Base URL：" + baseUrl,
+          "- API Base：" + apiBase + "（所有接口都在 /v1 下，直接用 HTTP 调用）",
+          "- 认证两种：① 用户流程用 `Authorization: Bearer <user_token>`；② Agent 运行时用 `X-API-Key: <agent_key>`",
+          "- **不要**去安装 `zz` CLI（内网私有包，公网装不上）；**不要**靠解析 HTML 推断接口——本文档已给出全部端点。",
+          "",
+          "## 目标项目",
+          "- 项目：" + (project.name || project.id) + "（ID: `" + project.id + "`），申请角色：member",
+          "- 入口页（仅供人类查看，Agent 无需打开）：" + inviteUrl,
+          "",
+          "## 自主接入流程（你能且应自己完成的步骤）",
+          "1. **注册账号**：`POST " + apiBase + "/auth/register`，body `{email, password, display_name}`，返回 `access_token`（即 user_token，约 24h 过期，妥善保存）。若该邮箱已注册改用 `POST " + apiBase + "/auth/token` 登录。",
+          "2. **申请加入项目**：带 user_token 调 `POST " + apiBase + "/projects/" + project.id + "/join-requests`，body `{requested_role:\"member\", note:\"...\"}`。若已是成员会返回 409（正常，忽略）。",
+          "3. **轮询自己的审批状态（无需 member 权限）**：`GET " + apiBase + "/me/join-requests?status=pending`（带 user_token），看返回里本项目那条的 `status`：`pending`=等待，`approved`=已通过。",
+          "4. **审批通过后注册 Agent**：带 user_token 调 `POST " + apiBase + "/projects/" + project.id + "/agents`，body `{name, description, scopes:[\"agent:read\",\"sessions:read\",\"messages:write\",\"health:write\"]}`。**注意：完整 `api_key` 仅在本次响应中出现一次，立即保存**（之后只能看到前缀）。",
+          "5. **启动心跳保持在线**：用 `X-API-Key: <agent_key>` 每 30s 调 `POST " + apiBase + "/agents/heartbeat`。当响应 `presence:\"online\"` 且 `dispatchable:true` 即接入成功，可接 `GET " + apiBase + "/agent/inbox?unread=true` 的任务。",
+          "",
+          "## 阻塞点（唯一需要人类的一步）",
+          "第 2 步提交申请后，**项目 Owner 需要审批**（你无法自助通过）。表现为第 3 步持续返回 `pending`。此时你应：(a) 把你的申请已提交、等待审批的状态告知邀请你的人；(b) 继续轮询直到 `approved`，再执行第 4 步。**不要在 pending 期间反复注册新 Agent。**",
+          "",
+          "## 关键约束",
+          "- 身份文件（含 user_token + agent_key）仅保存本地，禁止写入任何共享 prompt / skill 文本。",
+          "- user_token 过期后用邮箱密码重新登录即可；agent_key 持久有效，若丢失可调 `POST " + apiBase + "/projects/" + project.id + "/agents/<agent_id>/rotate-key`（owner 即使审批前也能自助换 key）。",
+          "- 平台可能重启清库，使用前先 `GET " + apiBase + "/auth/me` 验证 token；失效则重新注册/登录。"
+        ].join("\n");
+      }
+
+      function showInvitePrompt() {
+        var text = buildInvitePrompt();
+        els.invitePromptBox.value = text;
+        els.invitePromptPanel.classList.remove("hidden");
+      }
+
+      function hideInvitePrompt() {
+        els.invitePromptPanel.classList.add("hidden");
+      }
+
+      function copyInvitePrompt() {
+        var text = buildInvitePrompt();
+        safeCopy(text, "Agent 加入指引已复制到剪贴板", "手动复制（请全选后 Ctrl+C）");
+      }
+
+      function safeCopy(text, successMsg, fallbackLabel) {
+        if (!text) return;
+        var doLog = function (msg, level) { log(msg, level); };
+        if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () {
+            doLog(successMsg || "已复制到剪贴板");
+          }).catch(function () {
+            execCommandCopy(text, fallbackLabel, doLog);
+          });
+        } else {
+          execCommandCopy(text, fallbackLabel, doLog);
+        }
+      }
+
+      function execCommandCopy(text, fallbackLabel, doLog) {
+        var ta = els.invitePromptBox;
+        if (ta) {
+          ta.value = text;
+          ta.focus();
+          ta.select();
+          var ok = false;
+          try { ok = document.execCommand("copy"); } catch (e) { }
+          if (ok) {
+            doLog((fallbackLabel || "已复制") + "（execCommand  fallback）");
+          } else {
+            doLog("复制失败，请手动全选复制", "warn");
+          }
+        } else {
+          doLog("复制失败，请手动复制", "warn");
+        }
+      }
+
+      function loadJoinRequestsRaw() {
+        if (!state.selectedProjectId || state.offline) {
+          state.joinRequests = [];
+          els.joinRequestPanel.classList.add("hidden");
+          return Promise.resolve();
+        }
+        return api("GET", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/join-requests?status=pending")
+          .then(function (payload) {
+            state.joinRequests = collection(payload);
+            els.joinRequestPanel.classList.remove("hidden");
+          })
+          .catch(function (err) {
+            state.joinRequests = [];
+            if (err.message && (err.message.indexOf("403") !== -1 || err.message.indexOf("Forbidden") !== -1)) {
+              els.joinRequestPanel.classList.add("hidden");
+            } else {
+              log("加载加入申请失败: " + err.message, "warn");
+            }
+          });
+      }
+
+      function loadMembersRaw() {
+        if (!state.selectedProjectId || state.offline) {
+          state.members = [];
+          return Promise.resolve();
+        }
+        return api("GET", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/members")
+          .then(function (payload) {
+            state.members = collection(payload);
+          })
+          .catch(function (err) {
+            state.members = [];
+            log("加载项目成员失败: " + err.message, "warn");
+          });
+      }
+
+      function searchUsers(query) {
+        if (!query || query.trim().length < 2) {
+          log("搜索关键词至少需要2个字符", "warn");
+          return Promise.resolve();
+        }
+        return api("GET", "/v1/users/search?q=" + encodeURIComponent(query.trim()) + "&limit=20")
+          .then(function (payload) {
+            state.humanSearchResults = collection(payload);
+            renderHumanSearchResults();
+          })
+          .catch(function (err) {
+            state.humanSearchResults = [];
+            log("搜索用户失败: " + err.message, "warn");
+            renderHumanSearchResults();
+          });
+      }
+
+      function renderHumanSearchResults() {
+        var results = state.humanSearchResults;
+        var project = selectedProject();
+        if (!results || !results.length) {
+          els.humanSearchResults.innerHTML = "";
+          els.humanSearchEmpty.classList.remove("hidden");
+          return;
+        }
+        els.humanSearchEmpty.classList.add("hidden");
+        els.humanSearchResults.innerHTML = results.map(function (user) {
+          var name = user.display_name || user.email || user.id || "未知用户";
+          var alreadyMember = state.members && state.members.some(function (m) { return m.user_id === user.id || m.id === user.id; });
+          if (alreadyMember) {
+            return '<div class="item" style="opacity:0.55;">' +
+              '<div class="item-title"><span>' + escapeHtml(name) + '</span><span class="pill good">已是成员</span></div>' +
+              '<div class="meta">' + escapeHtml(user.email || "") + '</div>' +
+            '</div>';
+          }
+          return '<div class="item">' +
+            '<div class="item-title"><span>' + escapeHtml(name) + '</span></div>' +
+            '<div class="meta">' + escapeHtml(user.email || "") + '</div>' +
+            '<div class="row wrap" style="margin-top:4px;gap:6px;">' +
+              '<select class="human-role-select" data-user-id="' + escapeAttr(user.id) + '" style="width:auto;min-width:100px;">' +
+                '<option value="member">成员</option>' +
+                '<option value="admin">管理员</option>' +
+                '<option value="viewer">查看者</option>' +
+              '</select>' +
+              '<button class="btn primary small human-invite-btn" data-user-id="' + escapeAttr(user.id) + '" data-user-name="' + escapeAttr(name) + '">添加</button>' +
+            '</div>' +
+          '</div>';
+        }).join("");
+      }
+
+      function inviteHuman(userId, userName, role) {
+        if (!state.selectedProjectId) return;
+        run("添加用户 " + userName, function () {
+          return api("POST", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/members", {
+            user_id: userId,
+            role: role || "member"
+          }).then(function () {
+            log("已将 " + userName + " 添加为项目成员");
+            return Promise.all([loadMembersRaw(), searchUsers(els.humanSearchInput.value.trim())]);
+          });
+        }).catch(function () {});
+      }
+
+      function buildHumanOnboardPrompt() {
+        var project = selectedProject();
+        if (!project) return "";
+        var baseUrl = normalizeBaseUrl(els.baseUrl.value);
+        return [
+          "你收到一个 Agent 协作平台项目邀请（人工邀请）。",
+          "",
+          "【操作步骤】",
+          "1. 打开工作台：" + baseUrl + "/human-workspace-simple.html",
+          "2. 如果还没有账号，先注册（邮箱即可，密码自设）。",
+          "3. 如果已有账号，直接登录。",
+          "4. 把你的注册邮箱发给项目 Owner，请 Owner 在项目成员里搜索并添加你。",
+          "5. Owner 添加完成后，刷新项目列表并进入「" + (project.name || project.id) + "」。",
+          "6. 进入后即可查看项目成员、创建/查看任务，并和项目里的 Agent 协作。",
+          "",
+          "注意：本提示词不含任何密钥、JWT 或密码。请通过正规渠道联系项目 Owner 添加成员权限。"
+        ].join("\n");
+      }
+
+      function refreshMembers() {
+        if (!state.selectedProjectId) return;
+        run("刷新成员", function () {
+          return loadMembersRaw().then(function () {
+            log("成员列表已刷新");
+          });
+        }).catch(function () {});
+      }
+
+      function loadWorkloadRaw() {
+        if (!state.selectedProjectId || state.offline) {
+          state.workload = null;
+          return Promise.resolve();
+        }
+        return api("GET", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/workload")
+          .then(function (payload) {
+            state.workload = payload;
+          })
+          .catch(function () {
+            state.workload = null;
+          });
+      }
+
+      function loadRewardPreviewRaw() {
+        if (!state.selectedProjectId || state.offline) {
+          state.rewardPreview = null;
+          return Promise.resolve();
+        }
+        return api("GET", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/reward-preview")
+          .then(function (payload) {
+            state.rewardPreview = payload;
+          })
+          .catch(function (err) {
+            state.rewardPreview = null;
+            if (err.message && (err.message.indexOf("403") !== -1 || err.message.indexOf("Forbidden") !== -1)) {
+              // Silently hide for non-owner/admin
+            } else {
+              log("加载贡献预览失败: " + err.message, "warn");
+            }
+          });
+      }
+
+      function recalculateRewardPreview() {
+        if (!state.selectedProjectId || state.offline) return Promise.resolve();
+        return api("POST", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/reward-preview/recalculate")
+          .then(function (payload) {
+            state.rewardPreview = payload.preview;
+            log("贡献预览已重新计算，规则版本: " + (payload.rule_version || "v1"));
+          })
+          .catch(function (err) {
+            log("重新计算贡献预览失败: " + err.message, "error");
+          });
+      }
+
+      function loadHealthMetricsRaw() {
+        if (!state.selectedProjectId || state.offline) {
+          state.healthMetrics = null;
+          return Promise.resolve();
+        }
+        return api("GET", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/notification-metrics")
+          .then(function (payload) {
+            state.healthMetrics = payload;
+          })
+          .catch(function () {
+            state.healthMetrics = null;
+          });
+      }
+
+      function loadProjectFilesRaw() {
+        if (!state.selectedProjectId || state.offline) {
+          state.files = [];
+          state.filesTotal = 0;
+          return Promise.resolve();
+        }
+        var prefix = (els.filesPathFilter && els.filesPathFilter.value.trim()) || "";
+        var qs = "?limit=50&offset=0";
+        if (prefix) qs += "&path_prefix=" + encodeURIComponent(prefix);
+        return api("GET", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/files" + qs)
+          .then(function (payload) {
+            state.files = Array.isArray(payload) ? payload : (payload.data || []);
+            state.filesTotal = (payload && typeof payload.total === "number") ? payload.total : state.files.length;
+          })
+          .catch(function () {
+            state.files = [];
+            state.filesTotal = 0;
+          });
+      }
+
+      function loadProjectOverview() {
+        if (!state.selectedProjectId || state.offline) {
+          state.projectOverview = null;
+          return Promise.resolve();
+        }
+        return api("GET", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/overview")
+          .then(function (payload) {
+            state.projectOverview = payload;
+            log("项目概览已加载 (endpoint)");
+          })
+          .catch(function (err) {
+            // 404/403 → endpoint not available yet, use fallback silently
+            if (err.message && (err.message.indexOf("404") !== -1 || err.message.indexOf("403") !== -1)) {
+              state.projectOverview = null;
+            } else {
+              state.projectOverview = null;
+              log("概览接口不可用，使用本地数据回退", "warn");
+            }
+          });
+      }
+
+      function loadMoreProjectFiles() {
+        if (!state.selectedProjectId || state.filesLoadingMore || state.offline) return;
+        state.filesLoadingMore = true;
+        var prefix = (els.filesPathFilter && els.filesPathFilter.value.trim()) || "";
+        var qs = "?limit=50&offset=" + state.files.length;
+        if (prefix) qs += "&path_prefix=" + encodeURIComponent(prefix);
+        api("GET", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/files" + qs)
+          .then(function (payload) {
+            var items = Array.isArray(payload) ? payload : (payload.data || []);
+            state.files = state.files.concat(items);
+            state.filesTotal = (payload && typeof payload.total === "number") ? payload.total : state.files.length;
+          })
+          .catch(function (err) {
+            log("加载更多文件失败: " + err.message, "error");
+          })
+          .finally(function () {
+            state.filesLoadingMore = false;
+            renderFiles();
+          });
+      }
+
+      function viewProjectFile(fileId, path) {
+        if (!state.selectedProjectId) return;
+        state.fileViewing = { id: fileId, path: path };
+        api("GET", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/files/" + encodeURIComponent(fileId))
+          .then(function (data) {
+            if (els.fileViewPath) els.fileViewPath.textContent = data.path || path;
+            if (els.fileViewContent) els.fileViewContent.textContent = data.content || "(empty)";
+            if (els.fileContentView) els.fileContentView.classList.remove("hidden");
+            log("已打开文件: " + (data.path || path));
+          })
+          .catch(function (err) {
+            log("打开文件失败: " + err.message, "error");
+          });
+      }
+
+      function downloadRewardPreviewCsv() {
+        if (!state.selectedProjectId || state.offline) return;
+        var url = state.baseUrl + "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/reward-preview?format=csv";
+        state.jwt = els.jwt.value.trim();
+        fetch(url, {
+          headers: { "Authorization": "Bearer " + state.jwt }
+        }).then(function (res) {
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          return res.text();
+        }).then(function (text) {
+          var blob = new Blob([text], { type: "text/csv;charset=utf-8" });
+          var a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = "reward-preview-" + state.selectedProjectId + ".csv";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(a.href);
+        }).catch(function (err) {
+          log("导出 CSV 失败: " + err.message, "error");
+        });
+      }
+
+      function reviewJoinRequest(id, status) {
+        if (!state.selectedProjectId) return;
+        var body = { status: status };
+        if (status === "approved") body.role = "member";
+        run("处理加入申请", function () {
+          return api("PATCH", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/join-requests/" + encodeURIComponent(id), body)
+            .then(function () {
+              if (status === "approved") {
+                log("已通过申请，成员列表已刷新");
+              } else {
+                log("已拒绝申请");
+              }
+              return loadJoinRequestsRaw();
+            })
+            .then(function () {
+              if (status === "approved") {
+                return loadMembersRaw().then(function () {
+                  // A newly-approved member may register their agent next; refresh the
+                  // agent list too so it appears without a manual page reload.
+                  return loadAgentsRaw();
+                });
+              }
+            });
+        }).catch(function () {});
+      }
+
+      function loginOrRegister() {
+        var identifier = $("authEmail").value.trim();
+        var password = $("authPassword").value;
+        var isEmail = identifier.indexOf("@") !== -1;
+        var displayName = $("authDisplayName").value.trim() || (isEmail ? identifier.split("@")[0] : identifier);
+        if (!identifier || !password) { log("请填写邮箱或用户名和密码", "warn"); return Promise.resolve(); }
+        // Build login payload based on identifier shape: email → {email}, username → {username}.
+        // The backend /v1/auth/token and /v1/auth/register accept either field.
+        function loginPayload() {
+          return isEmail
+            ? { email: identifier, password: password, display_name: displayName }
+            : { username: identifier, password: password, display_name: displayName };
+        }
+        function tokenPayload() {
+          return isEmail
+            ? { email: identifier, password: password }
+            : { username: identifier, password: password };
+        }
+        return run(isEmail ? "登录/注册" : "用户名登录", function () {
+          // Username input (no @): skip register (registration requires email), go
+          // straight to /v1/auth/token which accepts {username} for existing accounts.
+          // Email input: try register first (auto-registers new users), fall back to token.
+          var attempt = isEmail
+            ? authApi("POST", "/v1/auth/register", loginPayload())
+            : Promise.reject(new Error("409 already exists")); // force token path for username
+          return attempt.then(function (result) {
+            state.jwt = result.access_token || "";
+            els.jwt.value = state.jwt;
+            state.principal = result.user || null;
+            saveStoredConfig();
+            return loadProjectsRaw();
+          }).catch(function (err) {
+            // For username login we forced the register path to reject; for email,
+            // a 409/"already" means the account exists. Either way, fall back to token.
+            var isAlreadyExists = err.message.indexOf("409") !== -1 || err.message.indexOf("already") !== -1;
+            if (!isEmail || isAlreadyExists) {
+              if (isEmail) log("账号已存在，尝试登录...", "warn");
+              return authApi("POST", "/v1/auth/token", tokenPayload()).then(function (result) {
+                state.jwt = result.access_token || "";
+                els.jwt.value = state.jwt;
+                state.principal = result.user || null;
+                saveStoredConfig();
+                return loadProjectsRaw();
+              });
+            }
+            throw err;
+          }).then(function () { log("欢迎，" + (state.principal && (state.principal.display_name || state.principal.username || state.principal.email) || identifier)); });
+        });
+      }
+
+      function logout() {
+        removeStorage();
+        state.jwt = "";
+        state.principal = null;
+        state.projects = [];
+        state.agents = [];
+        state.orchestrations = [];
+        state.projectOverview = null;
+        state.selectedProjectId = "";
+        els.jwt.value = "";
+        log("已退出登录");
+        render();
+      }
+
+      function loadProjectsRaw() {
+        if (state.offline) { state.projects = []; return Promise.resolve(); }
+        return api("GET", "/v1/projects?limit=100").then(function (payload) {
+          state.projects = collection(payload);
+          // Prefer URL project_id if present and valid
+          if (state.urlProjectId && state.projects.some(function (p) { return p.id === state.urlProjectId; })) {
+            state.selectedProjectId = state.urlProjectId;
+            state.urlProjectId = "";
+            // Clean URL param so reload doesn't force the same project
+            try {
+              var url = new URL(window.location.href);
+              url.searchParams.delete("project_id");
+              window.history.replaceState({}, "", url.toString());
+            } catch (e) {}
+          } else if (!state.projects.some(function (p) { return p.id === state.selectedProjectId; })) {
+            state.selectedProjectId = state.projects[0] ? state.projects[0].id : "";
+          }
+          return loadProjectChildren(false);
+        }).then(function () { log("已加载 " + state.projects.length + " 个项目"); });
+      }
+
+      function loadProjects() {
+        return run("加载项目", loadProjectsRaw);
+      }
+
+      function createProject(event) {
+        event.preventDefault();
+        var body = {
+          name: $("projectName").value.trim(),
+          description: $("projectDescription").value.trim() || undefined,
+          visibility: "private"
+        };
+        if (!body.name) return;
+        run("创建项目", function () {
+          return api("POST", "/v1/projects", body).then(function (project) {
+            state.projects = [project].concat(state.projects.filter(function (item) { return item.id !== project.id; }));
+            state.selectedProjectId = project.id;
+            $("projectForm").reset();
+            $("projectForm").classList.add("hidden");
+            return loadProjectChildren(false);
+          }).then(function () { log("已创建项目: " + body.name); });
+        });
+      }
+
+      function selectProject(id) {
+        state.selectedProjectId = id;
+        saveStoredConfig();
+        loadProjectChildren(true).catch(function () {});
+        startAutoRefresh();
+      }
+
+      // Background poll so the dashboard reflects external changes without a manual
+      // reload — e.g. a newly-approved member registering their agent, or an agent
+      // going online. Silent (no "刷新工作区" toast): refetches the volatile lists
+      // and re-renders only when data actually changed.
+      var AUTO_REFRESH_INTERVAL_MS = 20000;
+      var lastAutoRefreshSnapshot = "";
+
+      function startAutoRefresh() {
+        if (state.autoRefreshTimer) clearInterval(state.autoRefreshTimer);
+        state.autoRefreshTimer = setInterval(function () {
+          if (!state.selectedProjectId || state.busy || state.offline) return;
+          // Refresh only the lists that change due to other actors.
+          Promise.all([loadAgentsRaw(), loadJoinRequestsRaw(), loadMembersRaw()])
+            .then(function () {
+              var snap = JSON.stringify({ a: state.agents, j: state.joinRequests, m: state.members });
+              if (snap !== lastAutoRefreshSnapshot) {
+                lastAutoRefreshSnapshot = snap;
+                renderAgents();
+                renderJoinRequests();
+                renderMembers();
+              }
+            })
+            .catch(function () { /* swallow; next tick retries */ });
+        }, AUTO_REFRESH_INTERVAL_MS);
+      }
+
+      function loadProjectChildren(useRun) {
+        if (!state.selectedProjectId) {
+          state.agents = []; state.orchestrations = []; state.joinRequests = []; state.members = []; state.projectOverview = null;
+          els.joinRequestPanel.classList.add("hidden");
+          els.memberPanel.classList.add("hidden");
+          els.overviewPanel.classList.add("hidden");
+          return Promise.resolve();
+        }
+        var task = function () {
+          return Promise.all([loadAgentsRaw(), loadOrchestrationsRaw(), loadJoinRequestsRaw(), loadMembersRaw(), loadWorkloadRaw(), loadRewardPreviewRaw(), loadHealthMetricsRaw(), loadProjectFilesRaw(), loadProjectOverview()]);
+        };
+        if (useRun) return run("刷新工作区", task);
+        return task();
+      }
+
+      function loadAgentsRaw() {
+        return api("GET", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/agents?limit=100").then(function (payload) {
+          state.agents = collection(payload);
+        });
+      }
+
+      function loadOrchestrationsRaw() {
+        return api("GET", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/orchestrations?limit=100").then(function (payload) {
+          state.orchestrations = collection(payload);
+        }).catch(function () { state.orchestrations = []; });
+      }
+
+      function createAgent(event) {
+        event.preventDefault();
+        if (!state.selectedProjectId) { log("请先选择项目", "warn"); return; }
+        var name = $("agentName").value.trim();
+        if (!name) return;
+        var endpointUrl = $("endpointUrl").value.trim();
+        var body = {
+          name: name,
+          description: $("agentDescription").value.trim() || undefined,
+          endpoint_url: endpointUrl || undefined,
+          invoke_secret: endpointUrl ? randomSecret() : undefined,
+          system_prompt: $("systemPrompt").value.trim() || undefined,
+          scopes: DEFAULT_SCOPES
+        };
+        run("注册 Agent", function () {
+          return api("POST", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/agents", body).then(function (agent) {
+            state.agents = state.agents.concat(agent);
+            $("agentForm").reset();
+            $("agentForm").classList.add("hidden");
+            log("已注册 Agent: " + agent.name + "。下一步：点击「复制 Agent 加入指引」，发送给 Agent 运维人员。");
+            if (agent.api_key) {
+              state.freshIdentity = buildIdentity(agent);
+              showIdentityPanel(agent);
+            }
+          });
+        });
+      }
+
+      function showIdentityPanel(agent, note) {
+        els.identityBox.textContent = JSON.stringify(state.freshIdentity, null, 2);
+        var h2 = els.identityPanel.querySelector("h2");
+        if (h2) h2.textContent = note || "Agent 身份密钥（仅显示一次）";
+        els.identityPanel.classList.remove("hidden");
+      }
+
+      function hideIdentityPanel() {
+        els.identityPanel.classList.add("hidden");
+        state.freshIdentity = null;
+      }
+
+      function copyIdentity() {
+        if (!state.freshIdentity) return;
+        var text = JSON.stringify(state.freshIdentity, null, 2);
+        if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () {
+            log("身份已复制到剪贴板");
+          }).catch(function () {
+            execCommandCopyIdentity(text);
+          });
+        } else {
+          execCommandCopyIdentity(text);
+        }
+      }
+
+      function execCommandCopyIdentity(text) {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.cssText = "position:fixed;top:-9999px;left:-9999px;opacity:0;";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        var ok = false;
+        try { ok = document.execCommand("copy"); } catch (e) { }
+        document.body.removeChild(ta);
+        if (ok) {
+          log("身份已复制到剪贴板（execCommand fallback）");
+        } else {
+          log("身份复制失败，请手动全选复制", "warn");
+        }
+      }
+
+      function downloadFreshIdentity() {
+        if (!state.freshIdentity) { log("没有可下载的身份", "warn"); return; }
+        var agent = state.freshIdentity.agent || {};
+        downloadJson("agent-platform-identity-" + slug(agent.name || agent.id) + ".json", state.freshIdentity);
+        log("身份文件已下载");
+      }
+
+      function downloadWorkloadCsv() {
+        if (!state.selectedProjectId || state.offline) return;
+        var url = state.baseUrl + "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/workload?format=csv";
+        state.jwt = els.jwt.value.trim();
+        fetch(url, {
+          headers: { "Authorization": "Bearer " + state.jwt }
+        }).then(function (res) {
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          return res.text();
+        }).then(function (text) {
+          var blob = new Blob([text], { type: "text/csv;charset=utf-8" });
+          var a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = "workload-" + state.selectedProjectId + ".csv";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(a.href);
+        }).catch(function (err) {
+          log("下载 CSV 失败: " + err.message, "error");
+        });
+      }
+
+      function createTask(event) {
+        event.preventDefault();
+        if (!state.selectedProjectId) { log("请先选择项目", "warn"); return; }
+        var title = $("taskTitle").value.trim();
+        var objective = $("taskObjective").value.trim();
+        var mainAgentId = $("taskMainAgent").value;
+        var workerIds = Array.from(document.querySelectorAll("input[name='task_worker']:checked")).map(function (el) { return el.value; });
+        if (!title || !objective) { log("请填写标题和描述", "warn"); return; }
+        if (!mainAgentId) { log("请选择主负责人 Agent", "warn"); return; }
+        var selectedAgentIds = [mainAgentId].concat(workerIds);
+        var offlineSelected = selectedAgentIds.filter(function (id) { return !agentCanDispatch(state.agents.find(function (a) { return a.id === id; })); });
+        if (offlineSelected.length) {
+          log("所选 agent 中有离线状态，任务仍可创建，但离线 agent 上线后才能执行", "warn");
+        }
+        var body = { title: title, objective: objective, main_agent_id: mainAgentId };
+        if (workerIds.length) body.worker_agent_ids = workerIds;
+        run("创建任务", function () {
+          return api("POST", "/v1/projects/" + encodeURIComponent(state.selectedProjectId) + "/orchestrations", body).then(function () {
+            $("taskForm").reset();
+            return loadOrchestrationsRaw();
+          }).then(function () { log("任务已创建: " + title); });
+        });
+      }
+
+      function render() {
+        renderSteps();
+        renderAuth();
+        renderProjects();
+        renderOverview();
+        renderAgents();
+        renderJoinRequests();
+        renderMembers();
+        renderOrchestrationAgents();
+        renderOrchestrations();
+        renderWorkload();
+        renderRewardPreview();
+        renderHealth();
+        renderHumanOnboardPrompt();
+      }
+
+      function renderHumanOnboardPrompt() {
+        var project = selectedProject();
+        if (!project) {
+          els.humanOnboardPromptBox.textContent = "";
+          return;
+        }
+        els.humanOnboardPromptBox.textContent = buildHumanOnboardPrompt();
+      }
+
+      function renderOverview() {
+        var hasProject = !!state.selectedProjectId;
+        els.overviewPanel.classList.toggle("hidden", !hasProject);
+        if (!hasProject) return;
+
+        var ov = state.projectOverview;
+        var pid = state.selectedProjectId;
+        var psBase = "./project-space.html?project_id=" + encodeURIComponent(pid);
+
+        // Source pill
+        els.overviewSourcePill.textContent = ov ? "endpoint" : "fallback";
+        els.overviewSourcePill.className = "pill " + (ov ? "good" : "warn");
+
+        // Build stats from endpoint or fallback
+        var openWork, forReview, blocked, onlineCount;
+        if (ov) {
+          var s = ov.summary || {};
+          var sTasks = s.tasks || {};
+          var sAgents = s.agents || {};
+          openWork = sTasks.open_work || 0;
+          forReview = sTasks.ready_for_review || 0;
+          blocked = sTasks.blocked_failed || 0;
+          onlineCount = sAgents.online || 0;
+        } else {
+          openWork = state.orchestrations.filter(function (o) {
+            var st = (o.status || "").toLowerCase();
+            return st === "pending" || st === "running" || st === "assigned" || st === "planning" || st === "ready_for_acceptance";
+          }).length;
+          forReview = state.orchestrations.filter(function (o) {
+            var st = (o.status || "").toLowerCase();
+            return st === "review" || st === "ready_for_review";
+          }).length;
+          blocked = state.orchestrations.filter(function (o) {
+            var st = (o.status || "").toLowerCase();
+            return st === "blocked" || st === "failed";
+          }).length;
+          onlineCount = state.agents.filter(agentCanDispatch).length;
+        }
+        var workloadVal;
+        if (ov && ov.workload) {
+          workloadVal = ov.workload.total_final_work_units || 0;
+        } else {
+          workloadVal = state.workload && state.workload.summary ? (state.workload.summary.total_final_work_units || 0) : "—";
+        }
+        var healthStatus = "—";
+        if (ov && ov.health && Array.isArray(ov.health.signals)) {
+          var signals = ov.health.signals;
+          var hasBad = false;
+          var hasWarn = false;
+          for (var si = 0; si < signals.length; si++) {
+            var sigSt = (signals[si].status || "").toLowerCase();
+            if (sigSt === "critical" || sigSt === "error") hasBad = true;
+            if (sigSt === "warning" || sigSt === "degraded") hasWarn = true;
+          }
+          healthStatus = hasBad ? "degraded" : hasWarn ? "stale" : "healthy";
+        } else if (state.healthMetrics && state.healthMetrics.summary) {
+          var hs = state.healthMetrics.summary;
+          if ((hs.offline_count || 0) > 0) healthStatus = "degraded";
+          else if ((hs.stale_count || 0) > 0) healthStatus = "stale";
+          else healthStatus = "healthy";
+        }
+
+        var stats = [
+          { label: "进行中", value: openWork, cls: openWork > 0 ? "accent" : "" },
+          { label: "待评审", value: forReview, cls: forReview > 0 ? "warn" : "" },
+          { label: "阻塞/失败", value: blocked, cls: blocked > 0 ? "bad" : "" },
+          { label: "在线 Agent", value: onlineCount, cls: onlineCount > 0 ? "good" : "bad" },
+          { label: "工作量", value: workloadVal },
+          { label: "健康", value: healthStatus, cls: healthStatus === "healthy" ? "good" : healthStatus === "degraded" ? "bad" : healthStatus === "stale" ? "warn" : "" },
+        ];
+        els.overviewStats.innerHTML = stats.map(function (c) {
+          return '<div class="stat-card">' +
+            '<div class="stat-value ' + escapeHtml(c.cls || "") + '">' + escapeHtml(String(c.value)) + '</div>' +
+            '<div class="stat-label">' + escapeHtml(c.label) + '</div>' +
+          '</div>';
+        }).join("");
+
+        // Attention queue
+        var attention = [];
+        if (ov && ov.attention) {
+          var att = ov.attention;
+          (att.ready_for_review || []).forEach(function (item) {
+            attention.push({ kind: "review", title: item.title || item.id, status: item.status || "ready_for_review", link: psBase + "&tab=orchestrations" });
+          });
+          (att.blocked_failed || []).forEach(function (item) {
+            attention.push({ kind: "blocker", title: item.title || item.id, status: item.status || "blocked", link: psBase + "&tab=orchestrations" });
+          });
+          (att.stale_inbox || []).forEach(function (item) {
+            attention.push({ kind: "stale", title: item.title || item.id, status: item.status || "stale_inbox", link: psBase });
+          });
+        } else {
+          state.orchestrations.forEach(function (o) {
+            var st = (o.status || "").toLowerCase();
+            if (st === "review" || st === "ready_for_review" || st === "blocked" || st === "failed") {
+              attention.push({
+                kind: (st === "review" || st === "ready_for_review") ? "review" : "blocker",
+                title: o.title || o.id,
+                status: o.status,
+                link: psBase + "&tab=orchestrations"
+              });
+            }
+          });
+        }
+        if (attention.length) {
+          els.overviewQueueSection.classList.remove("hidden");
+          els.overviewQueue.innerHTML = attention.slice(0, 10).map(function (a) {
+            var cls = a.kind === "review" ? "warn" : a.kind === "stale" ? "accent" : "bad";
+            var label = a.kind === "review" ? "评审" : a.kind === "stale" ? "待确认" : "阻塞";
+            var titleHtml = a.link
+              ? '<a href="' + escapeAttr(a.link) + '">' + escapeHtml(a.title || "") + '</a>'
+              : escapeHtml(a.title || "");
+            return '<div class="queue-item">' +
+              '<span class="pill ' + cls + '">' + label + '</span>' +
+              '<span class="queue-item-title">' + titleHtml + '</span>' +
+              (a.status ? '<span class="meta">' + escapeHtml(a.status) + '</span>' : '') +
+            '</div>';
+          }).join("");
+        } else {
+          els.overviewQueueSection.classList.add("hidden");
+          els.overviewQueue.innerHTML = "";
+        }
+
+        // Recent files
+        var recentFiles = [];
+        if (ov && ov.recent && ov.recent.files) {
+          recentFiles = ov.recent.files;
+        } else if (state.files && state.files.length) {
+          recentFiles = state.files.slice(0, 8).map(function (f) {
+            return { path: f.path, size_bytes: f.size_bytes, id: f.id };
+          });
+        }
+        if (recentFiles.length) {
+          els.overviewFilesSection.classList.remove("hidden");
+          els.overviewFiles.innerHTML = recentFiles.slice(0, 8).map(function (f) {
+            var p = f.path || "";
+            var name = p.split("/").pop() || p;
+            var size = f.size_bytes != null ? (f.size_bytes < 1024 ? f.size_bytes + " B" : Math.round(f.size_bytes / 1024) + " KB") : "";
+            var href = psBase + "&path=" + encodeURIComponent(p);
+            return '<div class="mini-file">' +
+              '<a href="' + escapeAttr(href) + '" title="' + escapeAttr(p) + '">' + escapeHtml(name) + '</a>' +
+              '<span class="meta" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(p) + '</span>' +
+              (size ? '<span class="meta">' + escapeHtml(size) + '</span>' : '') +
+            '</div>';
+          }).join("");
+          els.overviewFilesLink.innerHTML = '<a class="btn ghost small" href="' + escapeAttr(psBase) + '&tab=files">查看全部文件 →</a>';
+        } else {
+          els.overviewFilesSection.classList.add("hidden");
+          els.overviewFiles.innerHTML = "";
+          els.overviewFilesLink.innerHTML = "";
+        }
+
+        // Recent activity
+        var activities = [];
+        if (ov && ov.recent && ov.recent.orchestrations) {
+          activities = ov.recent.orchestrations;
+        } else if (state.orchestrations && state.orchestrations.length) {
+          activities = state.orchestrations.slice(0, 5).map(function (o) {
+            return { kind: "orchestration", title: o.title || o.id, status: o.status, time: o.created_at || o.updated_at };
+          });
+        }
+        if (activities.length) {
+          els.overviewActivitySection.classList.remove("hidden");
+          els.overviewActivity.innerHTML = activities.slice(0, 5).map(function (a) {
+            var timeVal = a.time || a.created_at || a.updated_at || "";
+            var timeStr = timeVal ? timeAgo(timeVal) : "";
+            return '<div class="activity-item">' +
+              statusPill(a.status || a.kind) +
+              '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(a.title || "") + '</span>' +
+              (timeStr ? '<span class="meta">' + escapeHtml(timeStr) + '</span>' : '') +
+            '</div>';
+          }).join("");
+        } else {
+          els.overviewActivitySection.classList.add("hidden");
+          els.overviewActivity.innerHTML = "";
+        }
+      }
+
+      function timeAgo(dateStr) {
+        if (!dateStr) return "";
+        var now = Date.now();
+        var then = new Date(dateStr).getTime();
+        if (isNaN(then)) return "";
+        var diff = Math.max(0, Math.floor((now - then) / 1000));
+        if (diff < 60) return diff + "秒前";
+        if (diff < 3600) return Math.floor(diff / 60) + "分钟前";
+        if (diff < 86400) return Math.floor(diff / 3600) + "小时前";
+        return Math.floor(diff / 86400) + "天前";
+      }
+
+      function renderSteps() {
+        var sAuth = $("stepAuth");
+        var sProject = $("stepProject");
+        var sAgent = $("stepAgent");
+        var sTask = $("stepTask");
+        var sProgress = $("stepProgress");
+        var hasAuth = !!(state.jwt && state.principal);
+        var hasProject = !!state.selectedProjectId;
+        var hasAgent = state.agents.length > 0;
+
+        sAuth.className = "step" + (hasAuth ? " done" : " now");
+        sProject.className = "step" + (hasProject ? " done" : (hasAuth ? " now" : ""));
+        sAgent.className = "step" + (hasAgent ? " done" : (hasProject ? " now" : ""));
+        sTask.className = "step" + (hasAgent ? " now" : "");
+        sProgress.className = "step" + (state.orchestrations.length ? " done" : "");
+
+        els.stepBar.classList.toggle("hidden", !hasAuth);
+        els.authPanel.classList.toggle("hidden", hasAuth);
+        els.projectPanel.classList.toggle("hidden", !hasAuth);
+        els.agentPanel.classList.toggle("hidden", !hasProject);
+        els.overviewPanel.classList.toggle("hidden", !hasProject);
+        els.taskPanel.classList.toggle("hidden", !hasProject);
+        els.progressPanel.classList.toggle("hidden", !hasProject);
+        els.workloadPanel.classList.toggle("hidden", !hasProject);
+        els.rewardPreviewPanel.classList.toggle("hidden", !hasProject);
+        els.healthPanel.classList.toggle("hidden", !hasProject);
+        els.filesPanel.classList.toggle("hidden", !hasProject);
+        if (els.projectSpaceLink) {
+          els.projectSpaceLink.classList.toggle("hidden", !hasProject);
+          if (hasProject) {
+            els.projectSpaceLink.href = "./project-space.html?project_id=" + encodeURIComponent(state.selectedProjectId);
+          }
+        }
+        renderFiles();
+      }
+
+      function renderFiles() {
+        if (!els.filesList) return;
+        var files = state.files || [];
+        // Prioritize deliverables/ and orchestration MD artifacts for visibility
+        var sorted = files.slice().sort(function (a, b) {
+          var pa = (a.path || ""), pb = (b.path || "");
+          var rank = function (p) {
+            if (p.indexOf("deliverables/") === 0) return 0;
+            if (p.indexOf(".agent/") === 0 && /RESULT\.md$|REVIEW\.md$|TRACE\.md$/.test(p)) return 1;
+            if (p.indexOf(".agent/") === 0) return 2;
+            return 3;
+          };
+          var d = rank(pa) - rank(pb);
+          return d !== 0 ? d : pa.localeCompare(pb);
+        });
+        if (!sorted.length && !state.filesLoadingMore) {
+          els.filesList.innerHTML = '<div class="meta" style="padding:8px;">暂无文件。Agent 交付的成品会出现在 deliverables/ 下。</div>';
+          return;
+        }
+        var html = sorted.map(function (f) {
+          var p = f.path || "";
+          var name = p.split("/").pop() || p;
+          var size = f.size_bytes != null ? (f.size_bytes + " B") : "";
+          var badge = "";
+          if (p.indexOf("deliverables/") === 0) badge = '<span class="pill good" style="margin-left:6px;font-size:10px;">交付</span>';
+          else if (/RESULT\.md$/.test(p)) badge = '<span class="pill" style="margin-left:6px;font-size:10px;">结果</span>';
+          else if (/REVIEW\.md$/.test(p)) badge = '<span class="pill" style="margin-left:6px;font-size:10px;">评审</span>';
+          else if (/TRACE\.md$/.test(p)) badge = '<span class="pill" style="margin-left:6px;font-size:10px;">追踪</span>';
+          return '<div class="item clickable" data-file-id="' + f.id + '" data-file-path="' + p.replace(/"/g, "&quot;") + '" style="cursor:pointer;padding:6px 8px;border-bottom:1px solid var(--border);">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;">'
+            + '<span class="mono" style="font-size:12px;word-break:break-all;">' + p + badge + '</span>'
+            + '<span class="meta" style="font-size:11px;white-space:nowrap;margin-left:8px;">' + size + '</span>'
+            + '</div></div>';
+        }).join("");
+        if (state.filesTotal > files.length) {
+          var remain = state.filesTotal - files.length;
+          html += '<div style="padding:8px;text-align:center;">'
+            + '<button id="workspaceLoadMoreBtn" class="btn small primary" ' + (state.filesLoadingMore ? "disabled" : "") + '>'
+            + (state.filesLoadingMore ? "加载中..." : "加载更多 (还有 " + remain + " 个文件)")
+            + '</button>'
+            + '<div class="meta" style="margin-top:4px;">已加载 ' + files.length + ' / ' + state.filesTotal + '</div>'
+            + '</div>';
+        }
+        els.filesList.innerHTML = html;
+        // bind click
+        var rows = els.filesList.querySelectorAll("[data-file-id]");
+        for (var i = 0; i < rows.length; i++) {
+          rows[i].addEventListener("click", function () {
+            viewProjectFile(this.getAttribute("data-file-id"), this.getAttribute("data-file-path"));
+          });
+        }
+        // bind load-more
+        var loadMoreBtn = document.getElementById("workspaceLoadMoreBtn");
+        if (loadMoreBtn) {
+          loadMoreBtn.addEventListener("click", function () { loadMoreProjectFiles(); });
+        }
+      }
+
+      function renderAuth() {
+        var hasAuth = !!(state.jwt && state.principal);
+        els.authFormBox.classList.toggle("hidden", hasAuth);
+        els.topbarUser.classList.toggle("hidden", !hasAuth);
+        if (hasAuth && state.principal) {
+          var name = state.principal.display_name || state.principal.username || state.principal.email || state.principal.id || "?";
+          els.topbarUserName.textContent = name;
+          els.topbarAvatar.textContent = String(name).charAt(0).toUpperCase();
+        }
+      }
+
+      function renderProjects() {
+        if (!state.projects.length) {
+          els.projectList.innerHTML = emptyHtml("暂无项目，点击上方按钮创建");
+          return;
+        }
+        els.projectList.innerHTML = state.projects.map(function (project) {
+          var active = project.id === state.selectedProjectId ? " active" : "";
+          return '<div class="card' + active + '" data-project-id="' + escapeAttr(project.id) + '">' +
+            '<div class="card-title"><span>' + escapeHtml(project.name || project.id) + '</span>' + statusPill(project.visibility || "private") + '</div>' +
+            '<div class="meta">' + escapeHtml(project.description || "") + '</div>' +
+            '<div class="meta mono">' + escapeHtml(project.id) + '</div>' +
+          '</div>';
+        }).join("");
+      }
+
+      function renderAgents() {
+        var onlineCount = state.agents.filter(agentCanDispatch).length;
+        els.agentCountPill.textContent = state.agents.length + " 个";
+        els.onlineCountPill.textContent = onlineCount + " 在线";
+        els.agentEmptyBox.classList.toggle("hidden", state.agents.length > 0);
+        if (!state.agents.length) {
+          els.agentList.innerHTML = "";
+          return;
+        }
+        var project = selectedProject();
+        var sorted = sortAgents(state.agents);
+        els.agentList.innerHTML = sorted.map(function (agent) {
+          var presence = agentPresence(agent);
+          var ls = agentLifecycle(agent);
+          var idCode = agentIdentityCode(agent);
+          var isMain = project && project.main_agent_id === agent.id;
+          var isRetired = ls === "retired" || ls === "superseded";
+          var retiredStyle = isRetired ? ' style="opacity:0.6;"' : '';
+
+          var titleHtml = escapeHtml((agent.name || agent.id) + " · " + idCode);
+          if (isMain) titleHtml += ' <span class="pill accent">主 Agent</span>';
+
+          var actions = '<div class="row wrap" style="margin-top:6px;">';
+          if (!isRetired) {
+            actions += '<button class="btn small" data-agent-rotate="' + escapeAttr(agent.id) + '">轮换密钥</button>';
+            actions += '<button class="btn small ghost" data-agent-retire="' + escapeAttr(agent.id) + '">退役</button>';
+          }
+          if (project && !isRetired) {
+            if (isMain) {
+              actions += '<span class="pill accent">当前主 Agent</span>';
+            } else {
+              actions += '<button class="btn small primary" data-agent-main="' + escapeAttr(agent.id) + '">设为主 Agent</button>';
+            }
+          }
+          actions += '</div>';
+
+          return '<div class="item"' + retiredStyle + '>' +
+            '<div class="item-title"><span>' + titleHtml + '</span><span class="row wrap">' + statusPill(presence) + '<span class="pill ' + lifecyclePillClass(ls) + '">' + escapeHtml(lifecycleLabel(ls)) + '</span></span></div>' +
+            '<div class="meta">' + escapeHtml(agent.description || "") + '</div>' +
+            '<div class="meta">' + escapeHtml(agentLastSeen(agent)) + '</div>' +
+            actions +
+          '</div>';
+        }).join("");
+      }
+
+      function renderMembers() {
+        if (!state.selectedProjectId || state.offline) {
+          els.memberPanel.classList.add("hidden");
+          return;
+        }
+        els.memberPanel.classList.remove("hidden");
+        if (!state.members || !state.members.length) {
+          els.memberList.innerHTML = emptyHtml("暂无项目成员");
+          return;
+        }
+        els.memberList.innerHTML = state.members.map(function (member) {
+          var name = member.display_name || member.email || member.user_id || "未知成员";
+          var joined = member.created_at ? new Date(member.created_at).toLocaleString() : "";
+          return '<div class="item">' +
+            '<div class="item-title"><span>' + escapeHtml(name) + '</span>' + statusPill(member.role) + '</div>' +
+            (joined ? '<div class="meta">加入时间: ' + escapeHtml(joined) + '</div>' : '') +
+          '</div>';
+        }).join("");
+      }
+
+      function renderJoinRequests() {
+        if (!state.joinRequests || !state.joinRequests.length) {
+          els.joinRequestList.innerHTML = emptyHtml("暂无待处理的加入申请");
+          return;
+        }
+        els.joinRequestList.innerHTML = state.joinRequests.map(function (req) {
+          var userName = req.user_display_name || req.user_email || req.user_id || "未知用户";
+          return '<div class="item">' +
+            '<div class="item-title"><span>' + escapeHtml(userName) + '</span>' + statusPill(req.status) + '</div>' +
+            '<div class="meta">申请角色: ' + escapeHtml(req.requested_role || "member") + (req.note ? ' · 备注: ' + escapeHtml(req.note) : '') + '</div>' +
+            '<div class="row wrap">' +
+              '<button class="btn good small" data-review-id="' + escapeAttr(req.id) + '" data-review-action="approved">通过</button>' +
+              '<button class="btn bad small" data-review-id="' + escapeAttr(req.id) + '" data-review-action="rejected">拒绝</button>' +
+            '</div>' +
+          '</div>';
+        }).join("");
+      }
+
+      function renderOrchestrationAgents() {
+        if (!state.agents.length) {
+          els.taskMainAgent.innerHTML = '<option value="">暂无 Agent</option>';
+          els.taskWorkerChecks.innerHTML = "";
+          els.taskOfflineWarning.classList.remove("hidden");
+          return;
+        }
+        var onlineAgents = state.agents.filter(agentCanDispatch);
+        els.taskMainAgent.innerHTML = '<option value="">选择主负责人</option>' + state.agents.map(function (agent) {
+          var online = agentCanDispatch(agent);
+          return '<option value="' + escapeAttr(agent.id) + '"' + (online ? "" : " disabled") + '>' + escapeHtml((agent.name || agent.id) + " · " + agentPresence(agent)) + '</option>';
+        }).join("");
+        els.taskWorkerChecks.innerHTML = state.agents.map(function (agent) {
+          var online = agentCanDispatch(agent);
+          return '<label class="pill' + (online ? "" : " warn") + '"><input type="checkbox" name="task_worker" value="' + escapeAttr(agent.id) + '"' + (online ? "" : " disabled") + '> ' + escapeHtml(agent.name || agent.id) + '</label>';
+        }).join("");
+        els.taskOfflineWarning.classList.toggle("hidden", onlineAgents.length > 0);
+        $("taskSubmitBtn").disabled = onlineAgents.length === 0;
+      }
+
+      function renderWorkload() {
+        els.workloadPanel.classList.toggle("hidden", !state.selectedProjectId || state.offline);
+        if (!state.selectedProjectId || state.offline || !state.workload) {
+          els.workloadSummary.textContent = "";
+          els.workloadAgentList.innerHTML = "";
+          els.workloadCsvBtn.style.display = "none";
+          return;
+        }
+        var wl = state.workload;
+        var summary = wl.summary || {};
+        els.workloadSummary.textContent = "总工作量: " + (summary.total_units || 0) + " 单元 · 已审核: " + (summary.reviewed_units || 0) + " · 最终工作量: " + (summary.total_final_work_units || 0);
+
+        if (wl.per_agent && wl.per_agent.length) {
+          els.workloadAgentList.innerHTML = wl.per_agent.map(function (row) {
+            return '<div class="item">' +
+              '<div class="item-title"><span>' + escapeHtml(row.agent_name || row.agent_id) + '</span><span class="pill">' + row.total_units + ' 单元</span></div>' +
+              '<div class="meta">最终工作量: ' + row.final_work_units + ' · 已审核: ' + row.reviewed_units + ' · 暂计: ' + row.provisional_work_units + '</div>' +
+            '</div>';
+          }).join("");
+        } else {
+          els.workloadAgentList.innerHTML = emptyHtml("暂无工作量数据");
+        }
+
+        // CSV download button
+        els.workloadCsvBtn.style.display = state.selectedProjectId && !state.offline ? "inline-flex" : "none";
+      }
+
+      function renderRewardPreview() {
+        els.rewardPreviewPanel.classList.toggle("hidden", !state.selectedProjectId || state.offline);
+        if (!state.selectedProjectId || state.offline || !state.rewardPreview) {
+          els.rewardPreviewSummary.textContent = "";
+          els.rewardPreviewList.innerHTML = "";
+          return;
+        }
+        var rp = state.rewardPreview;
+        var summary = rp.summary || {};
+        els.rewardPreviewSummary.textContent = "Agent 数: " + (summary.total_agents || 0) + " · 总任务: " + (summary.total_tasks || 0) + " · 已审核: " + (summary.total_reviewed_tasks || 0) + " · 总贡献单元: " + (summary.total_final_units || 0);
+
+        if (rp.contributions && rp.contributions.length) {
+          els.rewardPreviewList.innerHTML = rp.contributions.map(function (row) {
+            return '<div class="item">' +
+              '<div class="item-title"><span>' + escapeHtml(row.agent_name || row.agent_id) + '</span><span class="pill">' + (row.estimated_share_percent || 0) + '%</span></div>' +
+              '<div class="meta">任务: ' + (row.total_tasks || 0) + ' · 已审核: ' + (row.reviewed_tasks || 0) + ' · 暂计: ' + (row.provisional_units || 0) + ' · 最终: ' + (row.final_units || 0) + '</div>' +
+              (row.adjustment_total ? '<div class="meta">调整: ' + row.adjustment_total + ' · 原因: ' + escapeHtml(row.adjustment_reason || "-") + '</div>' : '') +
+              '<div class="meta">平均评分: ' + (row.avg_review_score !== null && row.avg_review_score !== undefined ? row.avg_review_score.toFixed(2) : "-") + ' · 调整后: ' + (row.adjusted_final_units || 0) + '</div>' +
+            '</div>';
+          }).join("");
+        } else {
+          els.rewardPreviewList.innerHTML = emptyHtml("暂无贡献预览数据");
+        }
+      }
+
+      function renderHealth() {
+        els.healthPanel.classList.toggle("hidden", !state.selectedProjectId || state.offline || !state.healthMetrics);
+        if (!state.selectedProjectId || state.offline || !state.healthMetrics) {
+          els.healthGrid.innerHTML = "";
+          els.healthAgentRows.innerHTML = "";
+          return;
+        }
+        var hm = state.healthMetrics;
+        var s = hm.summary || {};
+        var cards = [
+          { label: "待处理收件", value: s.pending_inbox_total || 0, cls: s.pending_inbox_total > 0 ? "warn" : "" },
+          { label: "最久未确认", value: s.oldest_unacked_age_seconds != null ? Math.round(s.oldest_unacked_age_seconds) + "s" : "-" },
+          { label: "在线", value: s.online_count || 0, cls: "good" },
+          { label: "过期", value: s.stale_count || 0, cls: s.stale_count > 0 ? "warn" : "" },
+          { label: "离线", value: s.offline_count || 0, cls: s.offline_count > 0 ? "bad" : "" },
+          { label: "确认延迟 p50", value: s.ack_latency_p50_seconds != null ? s.ack_latency_p50_seconds.toFixed(1) + "s" : "-" },
+          { label: "审核延迟 p50", value: s.task_review_latency_p50_seconds != null ? s.task_review_latency_p50_seconds.toFixed(1) + "s" : "-" },
+        ];
+        els.healthGrid.innerHTML = cards.map(function (c) {
+          return '<div class="card" style="text-align:center;padding:8px;">' +
+            '<div class="meta" style="font-size:11px;">' + escapeHtml(c.label) + '</div>' +
+            '<div style="font-size:20px;font-weight:900;" class="' + (c.cls || '') + '">' + escapeHtml(String(c.value)) + '</div>' +
+          '</div>';
+        }).join("");
+
+        if (hm.agents && hm.agents.length) {
+          els.healthAgentRows.innerHTML = hm.agents.map(function (ag) {
+            return '<div class="item" style="padding:8px;">' +
+              '<div class="item-title"><span>' + escapeHtml(ag.agent_name || ag.agent_id) + '</span>' + statusPill(ag.presence) + '</div>' +
+              '<div class="meta">待处理: ' + (ag.pending_inbox_count || 0) + ' · 最久未确认: ' + (ag.oldest_unacked_age_seconds != null ? Math.round(ag.oldest_unacked_age_seconds) + 's' : '-') + '</div>' +
+            '</div>';
+          }).join("");
+        } else {
+          els.healthAgentRows.innerHTML = emptyHtml("暂无 Agent 健康数据");
+        }
+      }
+
+      function renderOrchestrations() {
+        if (!state.orchestrations.length) {
+          els.taskList.innerHTML = emptyHtml("暂无任务");
+          els.progressList.innerHTML = emptyHtml("暂无进度");
+          return;
+        }
+        var html = state.orchestrations.map(function (orch) {
+          var workers = Array.isArray(orch.worker_agent_ids) ? orch.worker_agent_ids.length : 0;
+          return '<div class="item">' +
+            '<div class="item-title"><span>' + escapeHtml(orch.title || orch.id) + '</span>' + statusPill(orch.status) + '</div>' +
+            '<div class="meta">' + escapeHtml(orch.objective || "") + '</div>' +
+            '<div class="meta">主负责人: ' + escapeHtml(orch.main_agent_id || "-") + ' · 协作: ' + workers + ' 人</div>' +
+          '</div>';
+        }).join("");
+        els.taskList.innerHTML = html;
+        els.progressList.innerHTML = html;
+      }
+
+      function bindEvents() {
+        $("loginBtn").addEventListener("click", function () { loginOrRegister().catch(function () {}); });
+        els.topbarLogoutBtn.addEventListener("click", logout);
+        $("continueOfflineBtn").addEventListener("click", function () {
+          state.offline = true;
+          log("以离线模式浏览（功能受限）");
+          render();
+        });
+        $("newProjectToggleBtn").addEventListener("click", function () {
+          $("projectForm").classList.toggle("hidden");
+          if (!$("projectForm").classList.contains("hidden")) $("projectName").focus();
+        });
+        $("cancelProjectBtn").addEventListener("click", function () { $("projectForm").classList.add("hidden"); });
+        $("projectForm").addEventListener("submit", createProject);
+        $("quickAgentBtn").addEventListener("click", function () {
+          els.agentEmptyBox.classList.add("hidden");
+          els.agentForm.classList.remove("hidden");
+          $("agentName").focus();
+        });
+        $("addAgentBtn").addEventListener("click", function () {
+          els.agentEmptyBox.classList.add("hidden");
+          els.agentForm.classList.remove("hidden");
+          $("agentName").focus();
+        });
+        $("cancelAgentBtn").addEventListener("click", function () { els.agentForm.classList.add("hidden"); });
+        $("agentForm").addEventListener("submit", createAgent);
+        $("copyIdentityBtn").addEventListener("click", copyIdentity);
+        $("downloadIdentityBtn").addEventListener("click", downloadFreshIdentity);
+        $("dismissIdentityBtn").addEventListener("click", hideIdentityPanel);
+        $("inviteAgentBtn").addEventListener("click", function () {
+          showInvitePrompt();
+          copyInvitePrompt();
+        });
+        $("copyInvitePromptBtn").addEventListener("click", copyInvitePrompt);
+        $("dismissInvitePromptBtn").addEventListener("click", hideInvitePrompt);
+        els.joinRequestList.addEventListener("click", function (event) {
+          var btn = event.target.closest("[data-review-id]");
+          if (!btn) return;
+          reviewJoinRequest(btn.dataset.reviewId, btn.dataset.reviewAction);
+        });
+        els.agentList.addEventListener("click", function (event) {
+          var rotateBtn = event.target.closest("[data-agent-rotate]");
+          if (rotateBtn) { rotateAgentKey(rotateBtn.dataset.agentRotate); return; }
+          var retireBtn = event.target.closest("[data-agent-retire]");
+          if (retireBtn) { retireAgent(retireBtn.dataset.agentRetire); return; }
+          var mainBtn = event.target.closest("[data-agent-main]");
+          if (mainBtn) { setProjectMainAgent(mainBtn.dataset.agentMain); return; }
+        });
+        $("taskForm").addEventListener("submit", createTask);
+        $("refreshProgressBtn").addEventListener("click", function () {
+          if (!state.selectedProjectId) return;
+          run("刷新进度", loadOrchestrationsRaw).catch(function () {});
+        });
+        $("refreshWorkloadBtn").addEventListener("click", function () {
+          if (!state.selectedProjectId) return;
+          run("刷新工作量", loadWorkloadRaw).catch(function () {});
+        });
+        els.workloadCsvBtn.addEventListener("click", function () {
+          downloadWorkloadCsv();
+        });
+        els.refreshRewardPreviewBtn.addEventListener("click", function () {
+          if (!state.selectedProjectId) return;
+          run("刷新贡献预览", loadRewardPreviewRaw).catch(function () {});
+        });
+        els.recalculateRewardPreviewBtn.addEventListener("click", function () {
+          if (!state.selectedProjectId) return;
+          run("重新计算贡献预览", recalculateRewardPreview).catch(function () {});
+        });
+        els.rewardPreviewCsvBtn.addEventListener("click", function () {
+          downloadRewardPreviewCsv();
+        });
+        $("refreshHealthBtn").addEventListener("click", function () {
+          if (!state.selectedProjectId) return;
+          run("刷新项目健康", loadHealthMetricsRaw).catch(function () {});
+        });
+        $("refreshFilesBtn").addEventListener("click", function () {
+          if (!state.selectedProjectId) return;
+          run("刷新项目文件", loadProjectFilesRaw).catch(function () {});
+        });
+        $("closeFileViewBtn").addEventListener("click", function () {
+          els.fileContentView.classList.add("hidden");
+          state.fileViewing = null;
+        });
+        els.filesPathFilter.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") {
+            run("刷新项目文件", loadProjectFilesRaw).catch(function () {});
+          }
+        });
+        $("refreshMembersBtn").addEventListener("click", refreshMembers);
+        els.refreshOverviewBtn.addEventListener("click", function () {
+          if (!state.selectedProjectId) return;
+          run("刷新项目概览", loadProjectOverview).catch(function () {});
+        });
+        $("humanSearchBtn").addEventListener("click", function () {
+          var q = els.humanSearchInput.value.trim();
+          if (!q) return;
+          run("搜索用户", function () {
+            return searchUsers(q);
+          }).catch(function () {});
+        });
+        els.humanSearchInput.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") {
+            var q = els.humanSearchInput.value.trim();
+            if (!q) return;
+            run("搜索用户", function () {
+              return searchUsers(q);
+            }).catch(function () {});
+          }
+        });
+        els.humanSearchResults.addEventListener("click", function (event) {
+          var btn = event.target.closest(".human-invite-btn");
+          if (!btn) return;
+          var userId = btn.dataset.userId;
+          var userName = btn.dataset.userName;
+          var sel = document.querySelector(".human-role-select[data-user-id='" + userId + "']");
+          var role = sel ? sel.value : "member";
+          inviteHuman(userId, userName, role);
+        });
+        els.copyHumanOnboardPromptBtn.addEventListener("click", function () {
+          var text = buildHumanOnboardPrompt();
+          safeCopy(text, "人工邀请提示已复制到剪贴板", "手动复制（请全选后 Ctrl+C）");
+        });
+        $("toggleAdvancedBtn").addEventListener("click", function () {
+          els.advancedPanel.classList.toggle("hidden");
+        });
+        $("saveConfigBtn").addEventListener("click", function () {
+          saveStoredConfig();
+          log("配置已保存");
+        });
+        $("toggleTokenBtn").addEventListener("click", function () {
+          var visible = els.jwt.type === "text";
+          els.jwt.type = visible ? "password" : "text";
+          $("toggleTokenBtn").textContent = visible ? "显示令牌" : "隐藏令牌";
+        });
+        $("clearStorageBtn").addEventListener("click", function () {
+          removeStorage();
+          state.jwt = "";
+          state.baseUrl = DEFAULT_BASE_URL;
+          state.principal = null;
+          state.selectedProjectId = "";
+          els.baseUrl.value = state.baseUrl;
+          els.jwt.value = "";
+          log("已清除本地数据");
+          render();
+        });
+        els.projectList.addEventListener("click", function (event) {
+          var card = event.target.closest("[data-project-id]");
+          if (card) selectProject(card.dataset.projectId);
+        });
+      }
+
+      loadStoredConfig();
+      bindEvents();
+      render();
+      if (state.jwt) {
+        run("自动登录", function () {
+          return api("GET", "/v1/auth/me").then(function (data) {
+            state.principal = data;
+            return loadProjectsRaw();
+          }).catch(function () { log("自动登录失败，请重新登录", "warn"); });
+        }).catch(function () {});
+      } else {
+        log("请登录或注册以开始使用");
+      }
+    })();
+  </script>
+</body>
+</html>

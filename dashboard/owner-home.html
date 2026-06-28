@@ -1,0 +1,2551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>个人主页 - Agent Collaboration OS</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --panel-2: #f8fafc;
+      --line: #dde3ec;
+      --line-strong: #b8c4d4;
+      --text: #172033;
+      --muted: #5f6f88;
+      --soft: #8896aa;
+      --accent: #2563eb;
+      --accent-strong: #1d4ed8;
+      --good: #047857;
+      --warn: #b45309;
+      --bad: #b91c1c;
+      --shadow: 0 10px 26px rgba(23, 32, 51, 0.07);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    button, input, textarea, select { font: inherit; }
+    button { border: 0; cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: 0.55; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      font-weight: 800;
+    }
+
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      font-size: 16px;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .page {
+      width: min(960px, 100%);
+      margin: 0 auto;
+      padding: 18px;
+      display: grid;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .panel-head {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfe;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .panel-title {
+      font-weight: 800;
+      min-width: 0;
+      font-size: 16px;
+    }
+
+    .panel-body {
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .section {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .section h2 {
+      margin: 0;
+      font-size: 14px;
+      color: #111827;
+    }
+
+    .field {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      padding: 9px 10px;
+      outline: none;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .row.wrap { flex-wrap: wrap; }
+    .grow { flex: 1 1 180px; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 36px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      background: #e8edf5;
+      color: #23324a;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .btn:hover { background: #dce4ef; }
+    .btn.primary { background: var(--accent); color: #fff; }
+    .btn.primary:hover { background: var(--accent-strong); }
+    .btn.good { background: var(--good); color: #fff; }
+    .btn.good:hover { background: #047857; }
+    .btn.warn { background: #d97706; color: #fff; }
+    .btn.warn:hover { background: #b45309; }
+    .btn.bad { background: var(--bad); color: #fff; }
+    .btn.bad:hover { background: #9b1515; }
+    .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--muted); }
+    .btn.small { min-height: 28px; padding: 5px 9px; font-size: 12px; }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      max-width: 100%;
+      min-height: 22px;
+      padding: 2px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .pill.good { background: #ecfdf5; border-color: rgba(4, 120, 87, 0.24); color: var(--good); }
+    .pill.bad { background: #fef2f2; border-color: rgba(185, 28, 28, 0.22); color: var(--bad); }
+    .pill.warn { background: #fffbeb; border-color: rgba(180, 83, 9, 0.24); color: var(--warn); }
+    .pill.accent { background: #eff6ff; border-color: rgba(37, 99, 235, 0.24); color: var(--accent); }
+
+    .meta { color: var(--muted); font-size: 12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 10px;
+    }
+
+    .card {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      text-align: left;
+      cursor: pointer;
+      display: grid;
+      gap: 4px;
+    }
+
+    .card:hover, .card.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.09);
+    }
+
+    .card-title {
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .card-title span:first-child {
+      overflow: hidden;
+      text-over: ellipsis;
+      white-space: nowrap;
+    }
+
+    .list { display: grid; gap: 8px; }
+
+    .item {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      display: grid;
+      gap: 4px;
+    }
+
+    .item-title {
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .empty {
+      padding: 18px;
+      color: var(--soft);
+      text-align: center;
+      border: 1px dashed var(--line-strong);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .identity-box {
+      padding: 10px;
+      border: 2px solid var(--warn);
+      border-radius: 6px;
+      background: #fffbeb;
+      word-break: break-all;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      user-select: all;
+    }
+
+    .alert {
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      border: 1px solid;
+    }
+
+    .alert.info {
+      background: #eff6ff;
+      border-color: rgba(37, 99, 235, 0.24);
+      color: #1e40af;
+    }
+
+    .alert.warn {
+      background: #fffbeb;
+      border-color: rgba(180, 83, 9, 0.24);
+      color: #92400e;
+    }
+
+    .hidden { display: none !important; }
+
+    .stat-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .stat-item {
+      display: grid;
+      gap: 2px;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .log {
+      min-height: 120px;
+      max-height: 220px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: #0f172a;
+      color: #dbeafe;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+
+    /* Golden Path pipeline */
+    .pipeline {
+      display: flex;
+      align-items: flex-start;
+      gap: 0;
+      overflow-x: auto;
+      padding: 4px 0;
+    }
+
+    .pipeline-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 0;
+      flex: 1 1 0;
+      min-width: 0;
+    }
+
+    .step-card {
+      flex: 1 1 0;
+      min-width: 120px;
+      padding: 12px;
+      border: 2px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      text-align: center;
+      display: grid;
+      gap: 6px;
+      justify-items: center;
+      transition: border-color 0.2s;
+    }
+
+    .step-card.active { border-color: var(--accent); }
+    .step-card.complete { border-color: var(--good); }
+    .step-card.waiting { border-color: var(--warn); }
+
+    .step-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 18px;
+      font-weight: 900;
+      background: var(--panel-2);
+      color: var(--muted);
+      border: 2px solid var(--line);
+    }
+
+    .step-card.active .step-icon { background: #eff6ff; color: var(--accent); border-color: var(--accent); }
+    .step-card.complete .step-icon { background: #ecfdf5; color: var(--good); border-color: var(--good); }
+    .step-card.waiting .step-icon { background: #fffbeb; color: var(--warn); border-color: var(--warn); }
+
+    .step-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.3;
+    }
+
+    .step-value {
+      font-size: 20px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .step-card.active .step-value { color: var(--accent); }
+    .step-card.complete .step-value { color: var(--good); }
+    .step-card.waiting .step-value { color: var(--warn); }
+
+    .step-hint {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.3;
+    }
+
+    .pipeline-arrow {
+      flex: 0 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding-top: 18px;
+      color: var(--line-strong);
+      font-size: 16px;
+    }
+
+    .pipeline-arrow.done { color: var(--good); }
+
+    .collapse-toggle {
+      background: transparent;
+      border: 0;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .collapse-toggle:hover { background: var(--panel-2); }
+
+    @media (max-width: 780px) {
+      .pipeline { flex-direction: column; align-items: stretch; }
+      .pipeline-step { flex-direction: row; }
+      .pipeline-arrow { transform: rotate(90deg); padding: 4px 0; justify-self: center; }
+      .step-card { text-align: left; justify-items: start; }
+    }
+
+    /* Trace panel */
+    .trace-artifact-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .trace-artifact-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+      cursor: default;
+      white-space: nowrap;
+    }
+
+    .trace-artifact-link.has-file {
+      cursor: pointer;
+      border-color: var(--accent);
+      color: var(--accent);
+      background: #eff6ff;
+    }
+
+    .trace-artifact-link.has-file:hover {
+      background: #dbeafe;
+    }
+
+    .trace-artifact-link.missing {
+      border-style: dashed;
+      border-color: var(--line-strong);
+      color: var(--soft);
+    }
+
+    .review-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .review-badge.pending {
+      background: #fffbeb;
+      border: 1px solid rgba(180, 83, 9, 0.24);
+      color: var(--warn);
+    }
+
+    .review-badge.approved {
+      background: #ecfdf5;
+      border: 1px solid rgba(4, 120, 87, 0.24);
+      color: var(--good);
+    }
+
+    .review-badge.changes_requested {
+      background: #fef2f2;
+      border: 1px solid rgba(185, 28, 28, 0.22);
+      color: var(--bad);
+    }
+
+    .trace-md-preview {
+      max-height: 400px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fff;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .trace-md-preview h1, .trace-md-preview h2, .trace-md-preview h3 {
+      font-family: inherit;
+    }
+
+    .trace-task-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .orch-card {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      cursor: pointer;
+      display: grid;
+      gap: 4px;
+      transition: border-color 0.15s;
+    }
+
+    .orch-card:hover, .orch-card.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.09);
+    }
+
+    .orch-card-title {
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    @media (max-width: 640px) {
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .top-actions { justify-content: flex-start; }
+      .page { padding: 10px; }
+      .card-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">我</div>
+      <div>
+        <div>个人主页</div>
+        <div class="meta">Agent Collaboration OS</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span id="statusPill" class="pill warn">未连接</span>
+      <a class="btn ghost small" href="./human-workspace-simple.html">项目工作台</a>
+      <a class="btn ghost small" href="./agent-start.html">Agent 启动引导</a>
+      <a class="btn ghost small" href="./index.html">高级控制台</a>
+    </div>
+  </header>
+
+  <main class="page">
+    <!-- Auth -->
+    <section id="authPanel" class="panel">
+      <div class="panel-head">
+        <div class="panel-title">账号</div>
+        <span class="meta">Owner 身份信息</span>
+      </div>
+      <div class="panel-body">
+        <div id="loginBox" class="section">
+          <div class="field">
+            <label for="authEmail">邮箱</label>
+            <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com">
+          </div>
+          <div class="field">
+            <label for="authPassword">密码</label>
+            <input id="authPassword" type="password" autocomplete="current-password" placeholder="不少于 8 位">
+          </div>
+          <div class="row wrap">
+            <button id="loginBtn" class="btn primary" type="button">登录</button>
+            <button id="registerBtn" class="btn good" type="button">注册并登录</button>
+          </div>
+          <div id="loginError" class="alert warn hidden"></div>
+        </div>
+        <div id="originHint" class="alert info hidden" style="margin-top:12px">
+          当前以 <span class="mono">file://</span> 打开。为了正常登录和读取项目数据，页面会切换到可登录的 HTTP 版本：<span class="mono">http://<your-platform-host>:18080/agent/owner-home.html</span>
+        </div>
+        <div id="accountBox" class="section hidden">
+          <div class="stat-row">
+            <div class="stat-item">
+              <div class="stat-label">用户 ID</div>
+              <div class="stat-value mono" id="accountId">-</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">邮箱</div>
+              <div class="stat-value" id="accountEmail">-</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">昵称</div>
+              <div class="stat-value" id="accountName">-</div>
+            </div>
+          </div>
+          <div class="row wrap">
+            <button id="logoutBtn" class="btn ghost small">退出登录</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Golden Path -->
+    <section id="goldenPathPanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">Golden Path 工作流</div>
+        <div class="row wrap">
+          <span id="gpProjectPill" class="pill">未选择项目</span>
+          <button id="gpRefreshBtn" class="btn small">刷新</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="alert info" style="margin-bottom:4px">
+          核心流程：<strong>项目 → 在线 Agent → 编排任务 → Worker 领取 → 提交结果+证据 → PM 评审通过</strong>。目标：缩短「首次评审完成时间」。
+        </div>
+        <div id="gpMetricsBanner" class="alert warn hidden" style="margin-bottom:4px"></div>
+        <div id="gpPipeline" class="pipeline">
+          <div class="pipeline-step"><div class="step-card"><div class="step-icon">1</div><div class="step-label">项目</div><div class="step-value" id="gpProject">-</div><div class="step-hint">已创建</div></div></div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-step"><div class="step-card"><div class="step-icon">2</div><div class="step-label">在线 Agent</div><div class="step-value" id="gpAgentsOnline">-</div><div class="step-hint" id="gpAgentsHint">就绪</div></div></div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-step"><div class="step-card"><div class="step-icon">3</div><div class="step-label">编排任务</div><div class="step-value" id="gpTasksPending">-</div><div class="step-hint" id="gpTasksHint">待分发</div></div></div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-step"><div class="step-card"><div class="step-icon">4</div><div class="step-label">Worker 领取</div><div class="step-value" id="gpWorkerClaimed">-</div><div class="step-hint" id="gpWorkerHint">已领取</div></div></div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-step"><div class="step-card"><div class="step-icon">5</div><div class="step-label">结果+证据</div><div class="step-value" id="gpResults">-</div><div class="step-hint" id="gpResultsHint">已提交</div></div></div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-step"><div class="step-card"><div class="step-icon">6</div><div class="step-label">PM 评审</div><div class="step-value" id="gpReviews">-</div><div class="step-hint" id="gpReviewsHint">已通过</div></div></div>
+        </div>
+        <div id="gpTtftSection" class="section" style="margin-top:10px">
+          <h2>首次评审完成时间 (TTFT)</h2>
+          <div class="stat-row">
+            <div class="stat-item">
+              <div class="stat-label">总耗时</div>
+              <div class="stat-value" id="gpTtftDuration">-</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">SLA 目标</div>
+              <div class="stat-value" id="gpTtftSla">&lt; 5 min</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">状态</div>
+              <div id="gpTtftSlaPill"><span class="pill">无数据</span></div>
+            </div>
+          </div>
+          <div id="gpTtftPhases" class="stat-row" style="margin-top:4px;flex-wrap:wrap;gap:10px">
+            <div class="stat-item">
+              <div class="stat-label">分发→领取</div>
+              <div class="stat-value mono" id="gpTtftPhaseDispatchClaim" style="font-size:13px">-</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">领取→完成</div>
+              <div class="stat-value mono" id="gpTtftPhaseClaimComplete" style="font-size:13px">-</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">完成→评审</div>
+              <div class="stat-value mono" id="gpTtftPhaseCompleteReview" style="font-size:13px">-</div>
+            </div>
+          </div>
+          <div id="gpTtftMeta" class="meta" style="margin-top:4px"></div>
+        </div>
+        <div id="gpSummary" class="section" style="margin-top:10px">
+          <h2>当前状态摘要</h2>
+          <div class="stat-row">
+            <div class="stat-item"><div class="stat-label">Agent 总数</div><div class="stat-value" id="gpTotalAgents">-</div></div>
+            <div class="stat-item"><div class="stat-label">在线</div><div class="stat-value" style="color:var(--good)" id="gpOnline">-</div></div>
+            <div class="stat-item"><div class="stat-label">迟缓</div><div class="stat-value" style="color:var(--warn)" id="gpStale">-</div></div>
+            <div class="stat-item"><div class="stat-label">离线</div><div class="stat-value" style="color:var(--bad)" id="gpOffline">-</div></div>
+            <div class="stat-item"><div class="stat-label">待处理收件箱</div><div class="stat-value" id="gpPendingInbox">-</div></div>
+            <div class="stat-item"><div class="stat-label">等待评审</div><div class="stat-value" id="gpWaitingReview">-</div></div>
+            <div class="stat-item"><div class="stat-label">阻塞任务</div><div class="stat-value" id="gpBlocked">-</div></div>
+          </div>
+        </div>
+        <div id="gpNextAction" class="alert info hidden" style="margin-top:8px"></div>
+      </div>
+    </section>
+
+    <!-- Owner Agent -->
+    <section id="ownerAgentPanel" class="panel">
+      <div class="panel-head">
+        <div class="panel-title">我的 Owner Agent</div>
+        <span id="ownerAgentStatusPill" class="pill warn">未绑定</span>
+      </div>
+      <div class="panel-body">
+        <!-- Bound state -->
+        <div id="boundAgentBox" class="hidden">
+          <div class="section">
+            <div class="stat-row">
+              <div class="stat-item">
+                <div class="stat-label">Agent 名称</div>
+                <div class="stat-value" id="boundAgentName">-</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-label">Agent ID</div>
+                <div class="stat-value mono" id="boundAgentId">-</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-label">身份标识</div>
+                <div class="stat-value mono" id="boundAgentIdentityCode">-</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-label">所属项目</div>
+                <div class="stat-value" id="boundAgentProject">-</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-label">状态</div>
+                <div class="stat-value" id="boundAgentPresence">-</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-label">最近心跳</div>
+                <div class="stat-value" id="boundAgentHeartbeat">-</div>
+              </div>
+            </div>
+          </div>
+          <div class="section">
+            <h2>API Key 前缀</h2>
+            <div class="mono" id="boundApiKeyPrefix" style="font-size:13px;color:var(--warn);">-</div>
+            <div class="alert info" style="margin-top:8px">
+              API Key 仅在创建时显示一次。如需新 Key，请前往项目控制台重新创建 Agent。
+            </div>
+          </div>
+          <div id="boundIdentityBox" class="hidden">
+            <div class="section">
+              <h2>Agent 身份（仅显示一次）</h2>
+              <div id="identityBox" class="identity-box"></div>
+              <div class="row wrap" style="margin-top:8px">
+                <button id="copyIdentityBtn" class="btn primary small">复制</button>
+                <button id="downloadIdentityBtn" class="btn good small">下载身份文件</button>
+              </div>
+            </div>
+          </div>
+          <div class="section">
+            <h2>Agent 启动指引（可复制给 Agent）</h2>
+            <div id="ownerAgentPromptBox" class="identity-box" style="white-space:pre-wrap;user-select:text;"></div>
+            <div class="row wrap" style="margin-top:8px">
+              <button id="copyAgentPromptBtn" class="btn primary small">复制启动指引</button>
+            </div>
+            <div class="meta" style="margin-top:6px">此提示词不含密钥，仅包含平台地址、Agent ID 和项目信息。</div>
+          </div>
+          <div class="row wrap">
+            <a class="btn primary" href="./human-workspace-simple.html">进入项目工作台</a>
+            <button id="unbindBtn" class="btn bad small">解除绑定</button>
+          </div>
+          <div class="meta" style="font-size:12px;color:var(--soft)">
+            注意：解除 Owner Agent 绑定仅移除身份绑定，Agent 在项目中的成员身份和协作权限不受影响。
+          </div>
+        </div>
+
+        <!-- Not bound state -->
+        <div id="unboundAgentBox">
+          <div class="alert info">
+            尚未绑定 Owner Agent。绑定后可以在此页面管理你的个人 Agent 身份。
+          </div>
+          <div class="section">
+            <h2>绑定已有 Agent</h2>
+            <div class="field">
+              <label for="bindProjectSelect">选择项目</label>
+              <select id="bindProjectSelect">
+                <option value="">加载中...</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="bindAgentSelect">选择 Agent</label>
+              <select id="bindAgentSelect" disabled>
+                <option value="">请先选择项目</option>
+              </select>
+            </div>
+            <button id="doBindBtn" class="btn primary" disabled>绑定此 Agent</button>
+          </div>
+          <div class="meta">
+            没有可用 Agent？<a href="./human-workspace-simple.html">去简易工作台创建一个</a>
+          </div>
+        </div>
+
+        <div id="bindError" class="alert warn hidden" style="margin-top:8px"></div>
+      </div>
+    </section>
+
+    <!-- Projects -->
+    <section id="projectsPanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">我的项目</div>
+        <span id="projectCountPill" class="pill">0 个</span>
+      </div>
+      <div class="panel-body">
+        <div id="projectList" class="card-grid" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <!-- Orchestration Trace & Review -->
+    <section id="tracePanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">编排追踪 &amp; 评审</div>
+        <div class="row wrap">
+          <select id="traceProjectSelect" style="min-width:160px;max-width:260px"><option value="">选择项目...</option></select>
+          <button id="traceRefreshBtn" class="btn small">刷新</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="alert info" style="margin-bottom:4px">
+          查看编排任务的完整 MD 追踪链：任务规格、提交结果、证据、PM 评审决定、变更记录。
+          <br><span class="meta">Agent 通过 CLI 执行任务；此页面仅供人类 PM 检查和评审。</span>
+        </div>
+
+        <!-- Orchestration list -->
+        <div class="section">
+          <h2>编排列表</h2>
+          <div id="traceOrchList" class="list" aria-live="polite">
+            <div class="empty">选择项目查看编排</div>
+          </div>
+        </div>
+
+        <!-- Selected orchestration detail -->
+        <div id="traceOrchDetail" class="hidden">
+          <div class="section" style="margin-top:10px">
+            <h2 id="traceOrchTitle">-</h2>
+            <div class="stat-row">
+              <div class="stat-item"><div class="stat-label">编排 ID</div><div class="stat-value mono" id="traceOrchId" style="font-size:12px">-</div></div>
+              <div class="stat-item"><div class="stat-label">状态</div><div id="traceOrchStatusPill">-</div></div>
+              <div class="stat-item"><div class="stat-label">任务数</div><div class="stat-value" id="traceOrchTaskCount">-</div></div>
+            </div>
+            <div id="traceOrchObjective" class="meta" style="margin-top:6px"></div>
+          </div>
+
+          <!-- TRACE.md -->
+          <div class="section" style="margin-top:10px">
+            <h2>TRACE.md</h2>
+            <div class="trace-artifact-row" style="margin-bottom:6px">
+              <span id="traceMdLink" class="trace-artifact-link missing">TRACE.md — 未生成</span>
+            </div>
+            <div id="traceMdPreview" class="trace-md-preview hidden"></div>
+          </div>
+
+          <!-- Tasks -->
+          <div class="section" style="margin-top:10px">
+            <h2>任务追踪</h2>
+            <div id="traceTaskGrid" class="trace-task-grid"></div>
+          </div>
+        </div>
+
+        <!-- Artifact preview modal area -->
+        <div id="traceArtifactPreview" class="section hidden" style="margin-top:10px">
+          <div class="panel-head" style="border-radius:8px 8px 0 0">
+            <div class="panel-title" id="traceArtifactTitle">-</div>
+            <button id="traceClosePreviewBtn" class="btn small ghost">关闭</button>
+          </div>
+          <div id="traceArtifactContent" class="trace-md-preview"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Join Requests & Invite -->
+    <section id="joinPanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">Agent 邀请 &amp; 加入请求</div>
+        <span id="joinCountPill" class="pill">0 待处理</span>
+      </div>
+      <div class="panel-body">
+        <div class="section">
+          <h2>邀请 Agent 加入</h2>
+          <div class="field">
+            <label for="joinProjectSelect">选择项目</label>
+            <select id="joinProjectSelect"><option value="">选择项目...</option></select>
+          </div>
+          <div class="field">
+            <label for="inviteRoleSelect">邀请角色</label>
+            <select id="inviteRoleSelect">
+              <option value="member">Member</option>
+              <option value="viewer">Viewer</option>
+            </select>
+          </div>
+          <button id="generateInviteLinkBtn" class="btn primary" disabled>生成邀请链接</button>
+          <div id="inviteLinkBox" class="hidden" style="margin-top:8px">
+            <div class="meta" style="margin-bottom:4px">分享此链接给 Agent：</div>
+            <div class="identity-box" id="inviteLinkText" style="cursor:pointer;user-select:all;border-color:var(--accent);background:#eff6ff" title="点击复制"></div>
+            <div class="meta" style="margin-top:4px">Agent 打开此链接后，会自动提交加入请求。你批准后，Agent 即可注册身份并参与协作。</div>
+          </div>
+        </div>
+        <div class="section">
+          <h2>待处理的加入请求</h2>
+          <div id="joinRequestList" class="list" aria-live="polite">
+            <div class="empty">选择项目查看加入请求</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Observability (collapsed by default) -->
+    <section id="obsPanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">
+          <button id="obsCollapseBtn" class="collapse-toggle" type="button">▸</button>
+          运行可观测性（详细）
+        </div>
+        <div class="row wrap">
+          <select id="obsProjectSelect" style="min-width:160px;max-width:260px"><option value="__all">全部项目</option></select>
+          <button id="obsRefreshBtn" class="btn small">刷新</button>
+        </div>
+      </div>
+      <div class="panel-body hidden" id="obsBody">
+        <div class="empty">加载中...</div>
+      </div>
+    </section>
+
+    <!-- Quick Actions -->
+    <section id="actionsPanel" class="panel hidden">
+      <div class="panel-head">
+        <div class="panel-title">快捷操作</div>
+      </div>
+      <div class="panel-body">
+        <div class="row wrap">
+          <a class="btn" href="./human-workspace-simple.html">进入简易工作台</a>
+          <a class="btn" href="./agent-start.html">Agent 入口</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Advanced (collapsed by default) -->
+    <section id="advancedPanel" class="panel">
+      <div class="panel-head">
+        <div class="panel-title">
+          <button id="advancedCollapseBtn" class="collapse-toggle" type="button">▸</button>
+          高级设置（调试）
+        </div>
+      </div>
+      <div class="panel-body hidden">
+        <div class="section">
+          <h2>平台地址</h2>
+          <div class="field">
+            <label for="baseUrl">Base URL</label>
+            <input id="baseUrl" spellcheck="false" autocomplete="url" placeholder="http://<your-platform-host>:18080/agent">
+          </div>
+          <div class="meta">局域网 NAS 默认地址，通常无需修改。</div>
+        </div>
+        <!-- 运行日志已隐藏以减少干扰，可在浏览器开发者工具中查看 -->
+        <!--
+        <div class="section">
+          <h2>运行日志</h2>
+          <div id="logBox" class="log" aria-live="polite"></div>
+        </div>
+        -->
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var STORAGE_KEY = "zz_owner_home_v1";
+      var DEFAULT_BASE_URL = window.location.protocol === "file:"
+        ? "http://<your-platform-host>:18080/agent"
+        : window.location.origin + "/agent";
+      var IDENTITY_SCHEMA = "agent-platform.identity.v1";
+
+      var state = {
+        baseUrl: DEFAULT_BASE_URL,
+        jwt: "",
+        principal: null,
+        ownerAgentId: null,
+        boundAgent: null,
+        freshIdentity: null,
+        projects: [],
+        projectAgents: {},
+        selectedBindProjectId: "",
+        joinRequests: [],
+        selectedProjectForJoin: "",
+        obsMetrics: null,
+        obsSelectedProjectId: "__all",
+        gpMetrics: null,
+        gpMetricsError: null,
+        gpMetricsLoaded: false,
+        traceSelectedProjectId: "",
+        traceOrchestrations: [],
+        traceSelectedOrchId: "",
+        traceOrchDetail: null,
+        traceTasks: [],
+        traceFileCache: {},
+        busy: false
+      };
+
+      function $(id) { return document.getElementById(id); }
+
+      var els = {
+        statusPill: $("statusPill"),
+        authPanel: $("authPanel"),
+        loginBox: $("loginBox"),
+        accountBox: $("accountBox"),
+        accountId: $("accountId"),
+        accountEmail: $("accountEmail"),
+        accountName: $("accountName"),
+        baseUrl: $("baseUrl"),
+        loginError: $("loginError"),
+        originHint: $("originHint"),
+        ownerAgentStatusPill: $("ownerAgentStatusPill"),
+        boundAgentBox: $("boundAgentBox"),
+        unboundAgentBox: $("unboundAgentBox"),
+        boundAgentName: $("boundAgentName"),
+        boundAgentId: $("boundAgentId"),
+        boundAgentIdentityCode: $("boundAgentIdentityCode"),
+        boundAgentProject: $("boundAgentProject"),
+        boundAgentPresence: $("boundAgentPresence"),
+        boundAgentHeartbeat: $("boundAgentHeartbeat"),
+        boundApiKeyPrefix: $("boundApiKeyPrefix"),
+        boundIdentityBox: $("boundIdentityBox"),
+        identityBox: $("identityBox"),
+        ownerAgentPromptBox: $("ownerAgentPromptBox"),
+        copyAgentPromptBtn: $("copyAgentPromptBtn"),
+        bindProjectSelect: $("bindProjectSelect"),
+        bindAgentSelect: $("bindAgentSelect"),
+        doBindBtn: $("doBindBtn"),
+        bindError: $("bindError"),
+        projectsPanel: $("projectsPanel"),
+        projectCountPill: $("projectCountPill"),
+        projectList: $("projectList"),
+        joinPanel: $("joinPanel"),
+        joinCountPill: $("joinCountPill"),
+        joinProjectSelect: $("joinProjectSelect"),
+        inviteRoleSelect: $("inviteRoleSelect"),
+        generateInviteLinkBtn: $("generateInviteLinkBtn"),
+        inviteLinkBox: $("inviteLinkBox"),
+        inviteLinkText: $("inviteLinkText"),
+        joinRequestList: $("joinRequestList"),
+        obsPanel: $("obsPanel"),
+        obsBody: $("obsBody"),
+        obsProjectSelect: $("obsProjectSelect"),
+        obsRefreshBtn: $("obsRefreshBtn"),
+        actionsPanel: $("actionsPanel"),
+        advancedPanel: $("advancedPanel"),
+        logBox: $("logBox"),
+        goldenPathPanel: $("goldenPathPanel"),
+        gpProjectPill: $("gpProjectPill"),
+        gpProject: $("gpProject"),
+        gpAgentsOnline: $("gpAgentsOnline"),
+        gpAgentsHint: $("gpAgentsHint"),
+        gpTasksPending: $("gpTasksPending"),
+        gpTasksHint: $("gpTasksHint"),
+        gpWorkerClaimed: $("gpWorkerClaimed"),
+        gpWorkerHint: $("gpWorkerHint"),
+        gpResults: $("gpResults"),
+        gpResultsHint: $("gpResultsHint"),
+        gpReviews: $("gpReviews"),
+        gpReviewsHint: $("gpReviewsHint"),
+        gpTotalAgents: $("gpTotalAgents"),
+        gpOnline: $("gpOnline"),
+        gpStale: $("gpStale"),
+        gpOffline: $("gpOffline"),
+        gpPendingInbox: $("gpPendingInbox"),
+        gpWaitingReview: $("gpWaitingReview"),
+        gpBlocked: $("gpBlocked"),
+        gpNextAction: $("gpNextAction"),
+        gpMetricsBanner: $("gpMetricsBanner"),
+        gpTtftSection: $("gpTtftSection"),
+        gpTtftDuration: $("gpTtftDuration"),
+        gpTtftSlaPill: $("gpTtftSlaPill"),
+        gpTtftPhaseDispatchClaim: $("gpTtftPhaseDispatchClaim"),
+        gpTtftPhaseClaimComplete: $("gpTtftPhaseClaimComplete"),
+        gpTtftPhaseCompleteReview: $("gpTtftPhaseCompleteReview"),
+        gpTtftMeta: $("gpTtftMeta"),
+        tracePanel: $("tracePanel"),
+        traceProjectSelect: $("traceProjectSelect"),
+        traceRefreshBtn: $("traceRefreshBtn"),
+        traceOrchList: $("traceOrchList"),
+        traceOrchDetail: $("traceOrchDetail"),
+        traceOrchTitle: $("traceOrchTitle"),
+        traceOrchId: $("traceOrchId"),
+        traceOrchStatusPill: $("traceOrchStatusPill"),
+        traceOrchTaskCount: $("traceOrchTaskCount"),
+        traceOrchObjective: $("traceOrchObjective"),
+        traceMdLink: $("traceMdLink"),
+        traceMdPreview: $("traceMdPreview"),
+        traceTaskGrid: $("traceTaskGrid"),
+        traceArtifactPreview: $("traceArtifactPreview"),
+        traceArtifactTitle: $("traceArtifactTitle"),
+        traceArtifactContent: $("traceArtifactContent"),
+        traceClosePreviewBtn: $("traceClosePreviewBtn")
+      };
+
+      function readStorage() {
+        try { return window.localStorage.getItem(STORAGE_KEY); } catch (e) { return ""; }
+      }
+      function writeStorage(value) {
+        try { window.localStorage.setItem(STORAGE_KEY, value); } catch (e) {}
+      }
+      function removeStorage() {
+        try { window.localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+      }
+
+      function loadStoredConfig() {
+        try {
+          var saved = JSON.parse(readStorage() || "{}");
+          state.baseUrl = saved.baseUrl || DEFAULT_BASE_URL;
+          state.jwt = saved.jwt || "";
+        } catch (e) {}
+        if (!state.jwt) {
+          state.jwt = readSharedJwt();
+        }
+        els.baseUrl.value = state.baseUrl;
+      }
+
+      function saveStoredConfig() {
+        state.baseUrl = normalizeBaseUrl(els.baseUrl.value);
+        writeStorage(JSON.stringify({ baseUrl: state.baseUrl, jwt: state.jwt }));
+      }
+
+      function readSharedJwt() {
+        var keys = [
+          "zz_human_workspace_simple_v1",
+          "zz_runtime_dashboard_v1",
+          "zz_human_workspace_v1"
+        ];
+        try {
+          var flat = window.localStorage.getItem("zz_jwt");
+          if (flat) return flat;
+        } catch (e) {}
+        for (var i = 0; i < keys.length; i++) {
+          try {
+            var saved = JSON.parse(window.localStorage.getItem(keys[i]) || "{}");
+            if (saved && saved.jwt) {
+              if (!state.baseUrl || state.baseUrl === DEFAULT_BASE_URL) state.baseUrl = saved.baseUrl || state.baseUrl;
+              return saved.jwt;
+            }
+          } catch (e) {}
+        }
+        return "";
+      }
+
+      function normalizeBaseUrl(value) {
+        return (value || DEFAULT_BASE_URL).trim().replace(/\/+$/, "");
+      }
+
+      function collection(payload) {
+        if (Array.isArray(payload)) return payload;
+        if (payload && Array.isArray(payload.data)) return payload.data;
+        return [];
+      }
+
+      function authHeaders() {
+        var headers = { "Content-Type": "application/json" };
+        if (state.jwt) headers.Authorization = "Bearer " + state.jwt;
+        return headers;
+      }
+
+      function api(method, path, body) {
+        state.baseUrl = normalizeBaseUrl(els.baseUrl.value);
+        var options = { method: method, headers: authHeaders() };
+        if (body !== undefined) options.body = JSON.stringify(body);
+        return fetch(state.baseUrl + path, options).then(function (response) {
+          return response.text().then(function (text) {
+            var payload = null;
+            if (text) { try { payload = JSON.parse(text); } catch (e) { payload = { detail: text }; } }
+            if (!response.ok) throw new Error(formatApiError(response.status, payload));
+            return payload;
+          });
+        });
+      }
+
+      function authApi(method, path, body) {
+        state.baseUrl = normalizeBaseUrl(els.baseUrl.value);
+        return fetch(state.baseUrl + path, {
+          method: method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        }).then(function (response) {
+          return response.text().then(function (text) {
+            var payload = text ? JSON.parse(text) : null;
+            if (!response.ok) throw new Error(formatApiError(response.status, payload));
+            return payload;
+          });
+        });
+      }
+
+      function formatApiError(status, payload) {
+        if (!payload) return "HTTP " + status;
+        if (typeof payload.detail === "string") return "HTTP " + status + ": " + payload.detail;
+        if (Array.isArray(payload.detail)) return "HTTP " + status + ": " + payload.detail.map(function (i) { return i.msg || JSON.stringify(i); }).join("; ");
+        if (payload.message) return "HTTP " + status + ": " + payload.message;
+        return "HTTP " + status + ": " + JSON.stringify(payload);
+      }
+
+      function run(label, task) {
+        if (state.busy) return Promise.resolve();
+        state.busy = true;
+        setStatus("运行中", "warn");
+        return Promise.resolve().then(task).then(function (result) {
+          setStatus("就绪", "good");
+          return result;
+        }).catch(function (err) {
+          setStatus("错误", "bad");
+          log(label + " 失败: " + err.message, "error");
+          throw err;
+        }).finally(function () {
+          state.busy = false;
+          render();
+        });
+      }
+
+      function setStatus(text, kind) {
+        els.statusPill.textContent = text;
+        els.statusPill.className = "pill " + (kind || "");
+      }
+
+      function log(message, level) {
+        var line = "[" + new Date().toLocaleTimeString() + "] " + (level ? level.toUpperCase() + " " : "") + message;
+        if (els.logBox) els.logBox.textContent = line + "\n" + els.logBox.textContent;
+      }
+
+      function escapeHtml(value) {
+        return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      }
+      function escapeAttr(value) { return escapeHtml(value).replace(/`/g, "&#96;"); }
+      function emptyHtml(message) { return '<div class="empty">' + escapeHtml(message) + '</div>'; }
+
+      function statusPill(value) {
+        var cls = value === "healthy" || value === "online" || value === "active" || value === "idle" || value === "running" ? "good" :
+          value === "stale" || value === "archived" || value === "offline" ? "warn" :
+          value === "down" || value === "error" ? "bad" : "";
+        return '<span class="pill ' + cls + '">' + escapeHtml(value) + '</span>';
+      }
+
+      function presenceLabel(agent) {
+        if (!agent) return "offline";
+        if (agent.presence) return agent.presence;
+        if (agent.last_heartbeat_at) {
+          var age = Date.now() - new Date(agent.last_heartbeat_at).getTime();
+          if (age < 5 * 60 * 1000) return "online";
+          if (age < 30 * 60 * 1000) return "idle";
+        }
+        return "offline";
+      }
+
+      function heartbeatLabel(agent) {
+        if (!agent || !agent.last_heartbeat_at) return "未连接";
+        var age = Date.now() - new Date(agent.last_heartbeat_at).getTime();
+        var seconds = Math.max(0, Math.floor(age / 1000));
+        if (seconds < 60) return seconds + " 秒前";
+        if (seconds < 3600) return Math.floor(seconds / 60) + " 分钟前";
+        return Math.floor(seconds / 3600) + " 小时前";
+      }
+
+      function agentIdentityCode(agent) {
+        if (!agent) return "-";
+        return agent.identity_code || agent.api_key_prefix || (agent.id ? agent.id.slice(0, 8) : "-");
+      }
+
+      function slug(value) {
+        return String(value || "identity").toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "identity";
+      }
+
+      function buildIdentity(agent, project) {
+        var now = new Date().toISOString();
+        var agentKey = agent && typeof agent.api_key === "string" ? agent.api_key : undefined;
+        var credentials = {};
+        if (state.jwt) credentials.user_token = state.jwt;
+        if (agentKey) credentials.agent_key = agentKey;
+        return {
+          schema: IDENTITY_SCHEMA,
+          created_at: now,
+          platform: { name: "Agent Collaboration OS", base_url: normalizeBaseUrl(els.baseUrl.value) },
+          user: state.principal ? { id: state.principal.id, username: state.principal.username || state.principal.email, display_name: state.principal.display_name || null } : null,
+          project: project ? { id: project.id, name: project.name, visibility: project.visibility || "private" } : null,
+          agent: agent ? { id: agent.id, name: agent.name, project_id: agent.project_id } : null,
+          credentials: credentials,
+          openclaw: {
+            plugin_id: "agent-social-platform",
+            package: "@zhuzeyang/openclaw-agent-social-platform",
+            config: { baseUrl: normalizeBaseUrl(els.baseUrl.value), userToken: state.jwt || undefined, agentKey: agentKey, timeoutMs: 30000 }
+          }
+        };
+      }
+
+      function buildOwnerAgentPrompt(agent, project) {
+        var baseUrl = normalizeBaseUrl(els.baseUrl.value);
+        var watchPrimaryCmd = "zz agent watch --once --format prompt";
+        var lines = [
+          "你是 Owner Agent，绑定到用户 " + (state.principal ? (state.principal.display_name || state.principal.email || state.principal.id) : "") + "。",
+          "",
+          "平台地址：" + baseUrl,
+          "项目：" + (project ? project.name : (agent.project_id || "-")) + "（ID: " + (agent.project_id || "-") + "）",
+          "",
+          "【启动指引】",
+          "1. 确保已安装 CLI 工具并登录（zz login --email ...）。",
+          "2. 启动监控循环（CLI 自动从身份文件读取 Agent ID 和项目）：",
+          "   " + watchPrimaryCmd,
+          "3. 持续运行：",
+          "   zz agent watch --interval 30",
+          "4. 保持心跳在线，以便接收任务通知。",
+          "",
+          "高级/调试：如需覆盖身份文件，使用显式参数：",
+          "   zz agent watch --once --format prompt --agent " + agent.id + " --project " + (agent.project_id || "") + "",
+          "",
+          "注意：本提示词不含任何密钥、JWT 或身份文件内容。",
+          "Agent 应使用自己的 API Key 或身份文件进行认证。"
+        ];
+        return lines.join("\n");
+      }
+
+      function downloadJson(filename, payload) {
+        var blob = new Blob([JSON.stringify(payload, null, 2) + "\n"], { type: "application/json" });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement("a");
+        link.href = url; link.download = filename;
+        document.body.appendChild(link); link.click(); link.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      function safeCopy(text, successMsg) {
+        if (!text) return;
+        if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () {
+            log(successMsg || "已复制到剪贴板");
+          }).catch(function () {});
+        }
+      }
+
+      // Auth
+      function authSubmit(mode) {
+        var email = $("authEmail").value.trim();
+        var password = $("authPassword").value;
+        if (!email || !password) {
+          els.loginError.textContent = "请填写邮箱和密码";
+          els.loginError.classList.remove("hidden");
+          return Promise.resolve();
+        }
+        if (password.length < 8) {
+          els.loginError.textContent = "密码至少 8 位";
+          els.loginError.classList.remove("hidden");
+          return Promise.resolve();
+        }
+        els.loginError.classList.add("hidden");
+        var isRegister = mode === "register";
+        var path = isRegister ? "/v1/auth/register" : "/v1/auth/token";
+        var body = { email: email, password: password };
+        if (isRegister) body.display_name = email.split("@")[0] || email;
+        return run(isRegister ? "注册并登录" : "登录", function () {
+          return authApi("POST", path, body).then(function (result) {
+            state.jwt = result.access_token || "";
+            saveStoredConfig();
+            return loadMe();
+          });
+        }).catch(function (err) {
+          els.loginError.textContent = (isRegister ? "注册失败: " : "登录失败: ") + (err && err.message ? err.message : "未知错误");
+          els.loginError.classList.remove("hidden");
+        });
+      }
+
+      function login() {
+        return authSubmit("login");
+      }
+
+      function registerAndLogin() {
+        return authSubmit("register");
+      }
+
+      function logout() {
+        removeStorage();
+        state.jwt = "";
+        state.principal = null;
+        state.ownerAgentId = null;
+        state.boundAgent = null;
+        state.projects = [];
+        state.projectAgents = {};
+        state.selectedBindProjectId = "";
+        state.gpMetrics = null;
+        state.gpMetricsError = null;
+        state.gpMetricsLoaded = false;
+        log("已退出登录");
+        render();
+      }
+
+      function loadMe() {
+        return api("GET", "/v1/auth/me").then(function (data) {
+          state.principal = data;
+          state.ownerAgentId = data.owner_agent_id || null;
+          log("已获取账号信息");
+          return state.ownerAgentId ? loadBoundAgent() : Promise.resolve();
+        }).then(function () {
+          return loadProjects();
+        }).then(function () {
+          return Promise.all([loadObsMetrics(), loadGoldenPathData()]);
+        });
+      }
+
+      function loadBoundAgent() {
+        return api("GET", "/v1/users/me/owner-agent").then(function (agent) {
+          state.boundAgent = agent;
+          log("已加载 Owner Agent: " + agent.name);
+        }).catch(function (err) {
+          state.boundAgent = null;
+          if (err.message && err.message.indexOf("404") !== -1) {
+            log("Owner Agent 未找到（可能已被删除）", "warn");
+          } else {
+            log("加载 Owner Agent 失败: " + err.message, "warn");
+          }
+        });
+      }
+
+      function loadProjects() {
+        return api("GET", "/v1/projects?limit=100").then(function (payload) {
+          state.projects = collection(payload);
+          log("已加载 " + state.projects.length + " 个项目");
+        }).catch(function (err) {
+          state.projects = [];
+          log("加载项目失败: " + err.message, "warn");
+        });
+      }
+
+      function loadProjectAgents(projectId) {
+        if (state.projectAgents[projectId]) return Promise.resolve();
+        return api("GET", "/v1/projects/" + encodeURIComponent(projectId) + "/agents?limit=100").then(function (payload) {
+          state.projectAgents[projectId] = collection(payload);
+        }).catch(function () {
+          state.projectAgents[projectId] = [];
+        });
+      }
+
+      // ─── Join Requests ──────────────────────────────────────────────────
+
+      function loadJoinRequests(projectId) {
+        if (!projectId) { state.joinRequests = []; renderJoinRequests(); return Promise.resolve(); }
+        return api("GET", "/v1/projects/" + encodeURIComponent(projectId) + "/join-requests?status=pending").then(function (payload) {
+          state.joinRequests = collection(payload);
+          log("已加载 " + state.joinRequests.length + " 条加入请求");
+          renderJoinRequests();
+        }).catch(function (err) {
+          state.joinRequests = [];
+          log("加载加入请求失败: " + err.message, "warn");
+          renderJoinRequests();
+        });
+      }
+
+      function approveJoinRequest(requestId) {
+        var projectId = state.selectedProjectForJoin;
+        if (!projectId || !requestId) return;
+        return run("批准加入请求", function () {
+          return api("PATCH", "/v1/projects/" + encodeURIComponent(projectId) + "/join-requests/" + encodeURIComponent(requestId), {
+            status: "approved"
+          }).then(function () {
+            log("已批准加入请求 " + requestId);
+            return loadJoinRequests(projectId);
+          });
+        }).catch(function (err) {
+          log("批准失败: " + err.message, "warn");
+        });
+      }
+
+      function rejectJoinRequest(requestId) {
+        var projectId = state.selectedProjectForJoin;
+        if (!projectId || !requestId) return;
+        if (!confirm("确定拒绝此加入请求吗？")) return;
+        return run("拒绝加入请求", function () {
+          return api("PATCH", "/v1/projects/" + encodeURIComponent(projectId) + "/join-requests/" + encodeURIComponent(requestId), {
+            status: "rejected"
+          }).then(function () {
+            log("已拒绝加入请求 " + requestId);
+            return loadJoinRequests(projectId);
+          });
+        }).catch(function (err) {
+          log("拒绝失败: " + err.message, "warn");
+        });
+      }
+
+      function generateInviteLink() {
+        var projectId = state.selectedProjectForJoin;
+        if (!projectId) { log("请先选择项目", "warn"); return; }
+        var project = state.projects.find(function (p) { return p.id === projectId; });
+        if (!project) return;
+        var role = els.inviteRoleSelect.value || "member";
+        var base = normalizeBaseUrl(state.baseUrl);
+        // Use the dashboard origin so the link works from any device on the LAN
+        var link = location.origin + "/agent/agent-start.html?intent=join&project_id=" + encodeURIComponent(project.id) + "&project_name=" + encodeURIComponent(project.name) + "&requested_role=" + encodeURIComponent(role);
+        els.inviteLinkText.textContent = link;
+        els.inviteLinkBox.classList.remove("hidden");
+        log("邀请链接已生成");
+      }
+
+      function renderJoinRequests() {
+        var pending = state.joinRequests;
+        els.joinCountPill.textContent = pending.length + " 待处理";
+        els.joinCountPill.className = "pill" + (pending.length > 0 ? " warn" : "");
+        if (!pending.length) {
+          els.joinRequestList.innerHTML = emptyHtml("暂无待处理的加入请求");
+          return;
+        }
+        els.joinRequestList.innerHTML = pending.map(function (req) {
+          var displayName = req.user_display_name || req.user_email || req.user_id || req.id;
+          var roleLabel = req.requested_role || "member";
+          var noteHtml = req.note ? '<div class="meta">' + escapeHtml(req.note) + '</div>' : '';
+          return '<div class="item">' +
+            '<div class="item-title"><span>' + escapeHtml(displayName) + '</span>' +
+              '<span class="row wrap"><span class="pill accent">' + escapeHtml(roleLabel) + '</span>' +
+              '<span class="pill warn">pending</span></span></div>' +
+            '<div class="meta mono" style="font-size:11px">' + escapeHtml(req.user_id || req.id) + '</div>' +
+            noteHtml +
+            '<div class="row wrap" style="margin-top:6px">' +
+              '<button class="btn good small" data-approve-join="' + escapeAttr(req.id) + '">✓ 批准</button>' +
+              '<button class="btn bad small" data-reject-join="' + escapeAttr(req.id) + '">✗ 拒绝</button>' +
+            '</div>' +
+          '</div>';
+        }).join("");
+      }
+
+      function doBind(agentId) {
+        els.bindError.classList.add("hidden");
+        return run("绑定 Agent", function () {
+          return api("PATCH", "/v1/users/me/owner-agent", { agent_id: agentId }).then(function () {
+            state.ownerAgentId = agentId;
+            log("绑定成功");
+            return loadMe();
+          });
+        }).catch(function (err) {
+          els.bindError.textContent = "绑定失败: " + err.message;
+          els.bindError.classList.remove("hidden");
+        });
+      }
+
+      function doUnbind() {
+        if (!state.ownerAgentId) return;
+        return run("解除绑定", function () {
+          return api("PATCH", "/v1/users/me/owner-agent", { agent_id: null }).then(function () {
+            state.ownerAgentId = null;
+            state.boundAgent = null;
+            log("已解除绑定");
+            render();
+          });
+        }).catch(function (err) {
+          log("解除绑定失败: " + err.message, "warn");
+        });
+      }
+
+      // Observability
+      function loadObsMetrics() {
+        var selId = state.obsSelectedProjectId;
+        if (selId === "__all") {
+          return api("GET", "/v1/admin/notification-metrics").then(function (data) {
+            state.obsMetrics = data;
+            log("已加载全局可观测性指标");
+          }).catch(function (err) {
+            state.obsMetrics = null;
+            log("加载可观测性指标失败: " + err.message, "warn");
+          });
+        }
+        return api("GET", "/v1/projects/" + encodeURIComponent(selId) + "/notification-metrics").then(function (data) {
+          state.obsMetrics = { projects: [data], aggregate: data.summary };
+          log("已加载项目可观测性指标: " + selId);
+        }).catch(function (err) {
+          state.obsMetrics = null;
+          log("加载项目可观测性指标失败: " + err.message, "warn");
+        });
+      }
+
+      // Golden Path data
+      function loadGoldenPathData() {
+        if (!state.principal) return Promise.resolve();
+        return api("GET", "/v1/admin/notification-metrics").then(function (data) {
+          state.gpMetrics = data;
+          state.gpMetricsError = null;
+          state.gpMetricsLoaded = true;
+          log("已加载 Golden Path 指标");
+        }).catch(function (err) {
+          // Remember the failure distinctly from "never loaded" so the panel
+          // can surface a visible unavailable/error state instead of dashes.
+          state.gpMetrics = null;
+          state.gpMetricsError = (err && err.message) ? err.message : String(err);
+          state.gpMetricsLoaded = true;
+          log("加载 Golden Path 指标失败: " + state.gpMetricsError, "warn");
+        });
+      }
+
+      function fmtSeconds(v) {
+        if (v === null || v === undefined) return "-";
+        if (v < 1) return "< 1s";
+        if (v < 60) return Math.round(v) + "s";
+        return Math.floor(v / 60) + "m " + Math.round(v % 60) + "s";
+      }
+
+      function fmtAge(v) {
+        if (v === null || v === undefined) return "-";
+        if (v < 60) return Math.round(v) + "s";
+        if (v < 3600) return Math.floor(v / 60) + "m " + Math.round(v % 60) + "s";
+        return Math.floor(v / 3600) + "h " + Math.round((v % 3600) / 60) + "m";
+      }
+
+      function slaPill(pass, threshold) {
+        if (pass === null || pass === undefined) return '<span class="pill">无数据</span>';
+        return pass
+          ? '<span class="pill good">达标 (&lt; ' + threshold + 's)</span>'
+          : '<span class="pill bad">未达标 (>= ' + threshold + 's)</span>';
+      }
+
+      function presenceDot(p) {
+        var cls = p === "online" ? "good" : p === "stale" ? "warn" : "bad";
+        return '<span class="pill ' + cls + '">' + escapeHtml(p) + '</span>';
+      }
+
+      function renderObs() {
+        if (!state.principal) {
+          els.obsPanel.classList.add("hidden");
+          return;
+        }
+        els.obsPanel.classList.remove("hidden");
+
+        // Populate project selector
+        var selVal = state.obsSelectedProjectId;
+        var options = '<option value="__all"' + (selVal === "__all" ? " selected" : "") + '>全部项目</option>';
+        state.projects.forEach(function (p) {
+          options += '<option value="' + escapeAttr(p.id) + '"' + (selVal === p.id ? " selected" : "") + '>' + escapeHtml(p.name || p.id) + '</option>';
+        });
+        els.obsProjectSelect.innerHTML = options;
+
+        var m = state.obsMetrics;
+        if (!m || !m.aggregate) {
+          els.obsBody.innerHTML = emptyHtml("暂无可观测性数据。请确认你是项目 Owner 或 Admin。");
+          return;
+        }
+
+        var agg = m.aggregate;
+        var html = "";
+
+        // Summary row
+        html += '<div class="section">';
+        html += '<h2>总览</h2>';
+        html += '<div class="stat-row">';
+        html += '<div class="stat-item"><div class="stat-label">Agent 总数</div><div class="stat-value">' + agg.total_agents + '</div></div>';
+        html += '<div class="stat-item"><div class="stat-label">在线</div><div class="stat-value" style="color:var(--good)">' + agg.online_count + '</div></div>';
+        html += '<div class="stat-item"><div class="stat-label">迟缓</div><div class="stat-value" style="color:var(--warn)">' + agg.stale_count + '</div></div>';
+        html += '<div class="stat-item"><div class="stat-label">离线</div><div class="stat-value" style="color:var(--bad)">' + agg.offline_count + '</div></div>';
+        html += '<div class="stat-item"><div class="stat-label">待处理</div><div class="stat-value">' + agg.pending_inbox_total + '</div></div>';
+        html += '<div class="stat-item"><div class="stat-label">最老待确认</div><div class="stat-value">' + fmtAge(agg.oldest_unacked_age_seconds) + '</div></div>';
+        html += '<div class="stat-item"><div class="stat-label">等待评审</div><div class="stat-value">' + agg.waiting_review_count + '</div></div>';
+        html += '<div class="stat-item"><div class="stat-label">阻塞任务</div><div class="stat-value">' + agg.blocked_task_count + '</div></div>';
+        html += '</div>';
+        html += '</div>';
+
+        // Latency + SLA
+        html += '<div class="section">';
+        html += '<h2>延迟与 SLA</h2>';
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+        html += '<div>';
+        html += '<div class="meta" style="margin-bottom:4px;font-weight:700">确认延迟 (Ack Latency)</div>';
+        html += '<div class="stat-row">';
+        html += '<div class="stat-item"><div class="stat-label">p50</div><div class="stat-value">' + fmtSeconds(agg.ack_latency_p50_seconds) + '</div></div>';
+        html += '<div class="stat-item"><div class="stat-label">p95</div><div class="stat-value">' + fmtSeconds(agg.ack_latency_p95_seconds) + '</div></div>';
+        html += '<div class="stat-item"><div class="stat-label">max</div><div class="stat-value">' + fmtSeconds(agg.ack_latency_max_seconds) + '</div></div>';
+        html += '</div>';
+        html += '<div style="margin-top:4px">' + slaPill(agg.ack_latency_sla_pass, 45) + '</div>';
+        html += '</div>';
+        html += '<div>';
+        html += '<div class="meta" style="margin-bottom:4px;font-weight:700">评审延迟 (Review Latency)</div>';
+        html += '<div class="stat-row">';
+        html += '<div class="stat-item"><div class="stat-label">p50</div><div class="stat-value">' + fmtSeconds(agg.task_review_latency_p50_seconds) + '</div></div>';
+        html += '<div class="stat-item"><div class="stat-label">p95</div><div class="stat-value">' + fmtSeconds(agg.task_review_latency_p95_seconds) + '</div></div>';
+        html += '<div class="stat-item"><div class="stat-label">max</div><div class="stat-value">' + fmtSeconds(agg.task_review_latency_max_seconds) + '</div></div>';
+        html += '</div>';
+        html += '<div style="margin-top:4px">' + slaPill(agg.task_review_latency_sla_pass, 90) + '</div>';
+        html += '</div>';
+        html += '</div>';
+        html += '</div>';
+
+        // Per-agent detail
+        var allAgents = [];
+        (m.projects || []).forEach(function (proj) {
+          (proj.agents || []).forEach(function (agent) {
+            agent._projectId = proj.project_id;
+            allAgents.push(agent);
+          });
+        });
+
+        if (allAgents.length > 0) {
+          html += '<div class="section">';
+          html += '<h2>Agent 状态</h2>';
+          html += '<div class="list">';
+          allAgents.forEach(function (agent) {
+            var proj = state.projects.find(function (p) { return p.id === agent._projectId; });
+            var projName = proj ? proj.name : agent._projectId;
+            var pendingTypes = (agent.pending_by_type || []).map(function (t) {
+              return escapeHtml(t.event_type) + ': ' + t.count;
+            }).join(", ");
+            var primaryCmd = 'zz agent watch --once --format prompt';
+            var debugCmd = 'zz agent watch --once --format prompt --agent ' + escapeHtml(agent.agent_id) + ' --project ' + escapeHtml(agent._projectId);
+            html += '<div class="item">';
+            html += '<div class="item-title"><span>' + escapeHtml(agent.agent_name) + '</span>' + presenceDot(agent.presence) + '</div>';
+            html += '<div class="stat-row">';
+            html += '<div class="stat-item"><div class="stat-label">项目</div><div class="stat-value">' + escapeHtml(projName) + '</div></div>';
+            html += '<div class="stat-item"><div class="stat-label">心跳</div><div class="stat-value">' + (agent.last_heartbeat_at ? fmtAge((Date.now() - new Date(agent.last_heartbeat_at).getTime()) / 1000) + "前" : "无") + '</div></div>';
+            html += '<div class="stat-item"><div class="stat-label">待处理</div><div class="stat-value">' + agent.pending_inbox_count + '</div></div>';
+            html += '<div class="stat-item"><div class="stat-label">最老未确认</div><div class="stat-value">' + fmtAge(agent.oldest_unacked_age_seconds) + '</div></div>';
+            html += '</div>';
+            if (pendingTypes) {
+              html += '<div class="meta" style="margin-top:2px">按类型: ' + pendingTypes + '</div>';
+            }
+            html += '<div class="row wrap" style="margin-top:6px">';
+            html += '<code class="mono" style="font-size:11px;background:#f1f5f9;padding:4px 8px;border-radius:4px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="点击复制">' + escapeHtml(primaryCmd) + '</code>';
+            html += '<button class="btn small ghost copy-watch-btn" data-cmd="' + escapeAttr(primaryCmd) + '">复制</button>';
+            html += '</div>';
+            html += '<div class="meta" style="margin-top:2px">高级调试: <code class="mono" style="font-size:11px">' + escapeHtml(debugCmd) + '</code></div>';
+            html += '</div>';
+          });
+          html += '</div>';
+          html += '</div>';
+        }
+
+        els.obsBody.innerHTML = html;
+      }
+
+      function refreshObs() {
+        run("刷新可观测性", function () {
+          return loadObsMetrics();
+        });
+      }
+
+      function onObsProjectChange() {
+        state.obsSelectedProjectId = els.obsProjectSelect.value;
+        run("切换项目", function () {
+          return loadObsMetrics();
+        });
+      }
+
+      // Golden Path rendering
+      function renderGoldenPath() {
+        if (!state.principal) {
+          els.goldenPathPanel.classList.add("hidden");
+          return;
+        }
+        els.goldenPathPanel.classList.remove("hidden");
+
+        els.gpProjectPill.textContent = state.projects.length + " 个项目";
+        els.gpProject.textContent = state.projects.length;
+        els.gpProject.parentElement.className = "step-card" + (state.projects.length > 0 ? " complete" : "");
+
+        // Metrics availability banner. Surface load failures visibly in the
+        // panel (not only in logs) and distinguish "still loading" from
+        // "loaded but failed". These metrics are aggregate admin data and do
+        // not include an approved/reviewed task count, so a data outage must
+        // never be allowed to imply that the Golden Path completed.
+        if (state.gpMetricsError) {
+          els.gpMetricsBanner.className = "alert warn";
+          els.gpMetricsBanner.textContent =
+            "Golden Path 指标不可用：加载失败（" + state.gpMetricsError +
+            "）。请确认账号为 Owner/Admin 且后端可达，或点击「刷新」重试。";
+          els.gpMetricsBanner.classList.remove("hidden");
+        } else if (!state.gpMetricsLoaded) {
+          els.gpMetricsBanner.className = "alert info";
+          els.gpMetricsBanner.textContent = "Golden Path 指标加载中…";
+          els.gpMetricsBanner.classList.remove("hidden");
+        } else {
+          els.gpMetricsBanner.classList.add("hidden");
+        }
+
+        var m = state.gpMetrics;
+        if (!m || !m.aggregate) {
+          // No usable aggregate data: neutralize the pipeline AND the summary
+          // stats (so a later refresh failure cannot leave stale numbers on
+          // screen). The banner above explains why; do not imply any step state.
+          els.gpAgentsOnline.textContent = "-";
+          els.gpTasksPending.textContent = "-";
+          els.gpWorkerClaimed.textContent = "-";
+          els.gpResults.textContent = "-";
+          els.gpReviews.textContent = "-";
+          els.gpReviewsHint.textContent = "无数据";
+          els.gpReviews.parentElement.className = "step-card"; // neutral, not complete
+
+          // Reset step 2-5 card classes to neutral so stale
+          // active/complete/waiting cannot remain from a prior load.
+          els.gpAgentsOnline.parentElement.className = "step-card";
+          els.gpTasksPending.parentElement.className = "step-card";
+          els.gpWorkerClaimed.parentElement.className = "step-card";
+          els.gpResults.parentElement.className = "step-card";
+
+          // Reset hints to their static defaults.
+          els.gpAgentsHint.textContent = "就绪";
+          els.gpTasksHint.textContent = "待分发";
+          els.gpWorkerHint.textContent = "已领取";
+          els.gpResultsHint.textContent = "已提交";
+
+          // Reset pipeline arrows to neutral.
+          var arrows = document.querySelectorAll("#gpPipeline .pipeline-arrow");
+          for (var i = 0; i < arrows.length; i++) {
+            arrows[i].className = "pipeline-arrow";
+          }
+
+          els.gpTotalAgents.textContent = "-";
+          els.gpOnline.textContent = "-";
+          els.gpStale.textContent = "-";
+          els.gpOffline.textContent = "-";
+          els.gpPendingInbox.textContent = "-";
+          els.gpWaitingReview.textContent = "-";
+          els.gpBlocked.textContent = "-";
+          // TTFT: neutralize when no aggregate data
+          els.gpTtftDuration.textContent = "-";
+          els.gpTtftSlaPill.innerHTML = '<span class="pill">无数据</span>';
+          els.gpTtftPhaseDispatchClaim.textContent = "-";
+          els.gpTtftPhaseClaimComplete.textContent = "-";
+          els.gpTtftPhaseCompleteReview.textContent = "-";
+          els.gpTtftMeta.textContent = "";
+          els.gpNextAction.classList.add("hidden");
+          return;
+        }
+
+        var agg = m.aggregate;
+        var online = agg.online_count || 0;
+        var total = agg.total_agents || 0;
+        var pending = agg.pending_inbox_total || 0;
+        var waitingReview = agg.waiting_review_count || 0;
+        var blocked = agg.blocked_task_count || 0;
+
+        // Step 2: Agents online
+        els.gpAgentsOnline.textContent = online + "/" + total;
+        els.gpAgentsHint.textContent = online > 0 ? "就绪" : "需要启动";
+        var agentsCard = els.gpAgentsOnline.parentElement;
+        agentsCard.className = "step-card" + (online > 0 ? " complete" : (total > 0 ? " waiting" : ""));
+
+        // Step 3: Orchestration tasks (pending inbox)
+        els.gpTasksPending.textContent = pending;
+        els.gpTasksHint.textContent = pending > 0 ? "待分发" : "无待处理";
+        var tasksCard = els.gpTasksPending.parentElement;
+        tasksCard.className = "step-card" + (pending > 0 ? " active" : " complete");
+
+        // Step 4: Worker claimed (pending - blocked as proxy)
+        var claimed = Math.max(0, pending - blocked);
+        els.gpWorkerClaimed.textContent = claimed;
+        els.gpWorkerHint.textContent = claimed > 0 ? "已领取" : "等待领取";
+        els.gpWorkerClaimed.parentElement.className = "step-card" + (claimed > 0 ? " active" : "");
+
+        // Step 5: Results submitted (waiting review as proxy)
+        els.gpResults.textContent = waitingReview;
+        els.gpResultsHint.textContent = waitingReview > 0 ? "待评审" : "无结果";
+        els.gpResults.parentElement.className = "step-card" + (waitingReview > 0 ? " active" : "");
+
+        // Step 6: PM Reviews.
+        // Backend notification-metrics exposes waiting_review_count and review
+        // latency, but NO approved/reviewed task count. Therefore
+        // waitingReview === 0 does NOT prove PM review passed — it may simply
+        // mean nothing has been reviewed yet. We must not mark this step
+        // "complete" without an approved count, so the 0 case stays neutral.
+        els.gpReviews.textContent = waitingReview > 0 ? String(waitingReview) : "0";
+        if (waitingReview > 0) {
+          els.gpReviewsHint.textContent = "待 PM 评审";
+          els.gpReviews.parentElement.className = "step-card waiting";
+        } else {
+          els.gpReviewsHint.textContent = "无待审项（缺少已评审计数）";
+          els.gpReviews.parentElement.className = "step-card"; // neutral, not complete
+        }
+
+        // Update arrows
+        var arrows = document.querySelectorAll("#gpPipeline .pipeline-arrow");
+        if (arrows.length >= 5) {
+          arrows[0].className = "pipeline-arrow" + (state.projects.length > 0 ? " done" : "");
+          arrows[1].className = "pipeline-arrow" + (online > 0 ? " done" : "");
+          arrows[2].className = "pipeline-arrow" + (pending > 0 ? " done" : "");
+          arrows[3].className = "pipeline-arrow" + (claimed > 0 ? " done" : "");
+          arrows[4].className = "pipeline-arrow" + (waitingReview > 0 ? " done" : "");
+        }
+
+        // Summary stats
+        els.gpTotalAgents.textContent = total;
+        els.gpOnline.textContent = online;
+        els.gpStale.textContent = agg.stale_count || 0;
+        els.gpOffline.textContent = agg.offline_count || 0;
+        els.gpPendingInbox.textContent = pending;
+        els.gpWaitingReview.textContent = waitingReview;
+        els.gpBlocked.textContent = blocked;
+
+        // TTFT panel
+        renderTtftPanel(agg);
+
+        // Next action hint
+        if (!state.projects.length) {
+          els.gpNextAction.textContent = "→ 下一步：创建一个项目";
+          els.gpNextAction.className = "alert warn";
+          els.gpNextAction.classList.remove("hidden");
+        } else if (online === 0 && total === 0) {
+          els.gpNextAction.textContent = "→ 下一步：在项目中注册 Agent 并启动";
+          els.gpNextAction.className = "alert warn";
+          els.gpNextAction.classList.remove("hidden");
+        } else if (online === 0) {
+          els.gpNextAction.textContent = "→ 下一步：启动离线 Agent（心跳未连接）";
+          els.gpNextAction.className = "alert warn";
+          els.gpNextAction.classList.remove("hidden");
+        } else if (pending > 0 && waitingReview === 0) {
+          els.gpNextAction.textContent = "→ 下一步：Worker 领取任务并提交结果";
+          els.gpNextAction.className = "alert info";
+          els.gpNextAction.classList.remove("hidden");
+        } else if (waitingReview > 0) {
+          els.gpNextAction.textContent = "→ 下一步：PM 评审 " + waitingReview + " 个待审结果";
+          els.gpNextAction.className = "alert info";
+          els.gpNextAction.classList.remove("hidden");
+        } else {
+          // pending === 0 && waitingReview === 0: nothing pending or awaiting
+          // review. We still cannot confirm PM review passed because the panel
+          // has no approved/reviewed count, so point the owner at the
+          // orchestration/task detail view instead of claiming completion.
+          els.gpNextAction.textContent =
+            "→ 暂无待审项；本面板缺少「已评审/已通过」计数，无法自动判定 PM 评审通过。需要打开编排/任务详情确认。";
+          els.gpNextAction.className = "alert info";
+          els.gpNextAction.classList.remove("hidden");
+        }
+      }
+
+      var TTFT_TARGET_MS = 5 * 60 * 1000; // 5 minutes
+
+      function fmtTtftMs(ms) {
+        if (ms === null || ms === undefined) return "-";
+        if (ms < 1000) return ms + "ms";
+        var seconds = ms / 1000;
+        if (seconds < 60) return Math.round(seconds) + "s";
+        return Math.floor(seconds / 60) + "m " + Math.round(seconds % 60) + "s";
+      }
+
+      function phaseDurationMs(startIso, endIso) {
+        if (!startIso || !endIso) return null;
+        var start = new Date(startIso).getTime();
+        var end = new Date(endIso).getTime();
+        if (isNaN(start) || isNaN(end) || end < start) return null;
+        return end - start;
+      }
+
+      function renderTtftPanel(agg) {
+        var ttftMs = agg.time_to_first_reviewed_task_ms;
+        var phases = agg.ttft_phases;
+
+        if (ttftMs === null || ttftMs === undefined) {
+          els.gpTtftDuration.textContent = "-";
+          els.gpTtftSlaPill.innerHTML = '<span class="pill">无数据</span>';
+          els.gpTtftPhaseDispatchClaim.textContent = "-";
+          els.gpTtftPhaseClaimComplete.textContent = "-";
+          els.gpTtftPhaseCompleteReview.textContent = "-";
+          els.gpTtftMeta.textContent = "尚无已评审任务";
+          return;
+        }
+
+        els.gpTtftDuration.textContent = fmtTtftMs(ttftMs);
+
+        var pass = ttftMs < TTFT_TARGET_MS;
+        els.gpTtftSlaPill.innerHTML = pass
+          ? '<span class="pill good">达标</span>'
+          : '<span class="pill bad">未达标</span>';
+
+        if (phases) {
+          var dc = phaseDurationMs(phases.dispatched_at, phases.claimed_at);
+          var cc = phaseDurationMs(phases.claimed_at, phases.completed_at);
+          var cr = phaseDurationMs(phases.completed_at, phases.reviewed_at);
+          els.gpTtftPhaseDispatchClaim.textContent = dc !== null ? fmtTtftMs(dc) : "-";
+          els.gpTtftPhaseClaimComplete.textContent = cc !== null ? fmtTtftMs(cc) : "-";
+          els.gpTtftPhaseCompleteReview.textContent = cr !== null ? fmtTtftMs(cr) : "-";
+        } else {
+          els.gpTtftPhaseDispatchClaim.textContent = "-";
+          els.gpTtftPhaseClaimComplete.textContent = "-";
+          els.gpTtftPhaseCompleteReview.textContent = "-";
+        }
+
+        var meta = agg.ttft_task_id ? "任务 " + agg.ttft_task_id.slice(0, 8) : "";
+        if (phases && phases.reviewed_at) {
+          try {
+            var d = new Date(phases.reviewed_at);
+            meta += (meta ? " · " : "") + "评审于 " + d.toLocaleDateString("zh-CN") + " " + d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+          } catch (e) {}
+        }
+        els.gpTtftMeta.textContent = meta;
+      }
+
+      function refreshGoldenPath() {
+        run("刷新 Golden Path", function () {
+          return loadGoldenPathData();
+        });
+      }
+
+      // ─── Trace Panel ────────────────────────────────────────────────────
+
+      function loadTraceOrchestrations(projectId) {
+        if (!projectId) {
+          state.traceOrchestrations = [];
+          state.traceSelectedOrchId = "";
+          state.traceOrchDetail = null;
+          state.traceTasks = [];
+          renderTrace();
+          return Promise.resolve();
+        }
+        return api("GET", "/v1/projects/" + encodeURIComponent(projectId) + "/orchestrations?limit=50").then(function (payload) {
+          state.traceOrchestrations = collection(payload);
+          if (state.traceSelectedOrchId && !state.traceOrchestrations.find(function (o) { return o.id === state.traceSelectedOrchId; })) {
+            state.traceSelectedOrchId = "";
+            state.traceOrchDetail = null;
+            state.traceTasks = [];
+          }
+          log("已加载 " + state.traceOrchestrations.length + " 个编排");
+          renderTrace();
+        }).catch(function (err) {
+          state.traceOrchestrations = [];
+          log("加载编排失败: " + err.message, "warn");
+          renderTrace();
+        });
+      }
+
+      function loadTraceOrchDetail(projectId, orchId) {
+        if (!projectId || !orchId) return Promise.resolve();
+        return api("GET", "/v1/projects/" + encodeURIComponent(projectId) + "/orchestrations/" + encodeURIComponent(orchId)).then(function (data) {
+          state.traceOrchDetail = data;
+          state.traceTasks = Array.isArray(data.tasks) ? data.tasks : [];
+          state.traceSelectedOrchId = orchId;
+          log("已加载编排详情: " + (data.title || orchId));
+          renderTrace();
+        }).catch(function (err) {
+          state.traceOrchDetail = null;
+          state.traceTasks = [];
+          log("加载编排详情失败: " + err.message, "warn");
+          renderTrace();
+        });
+      }
+
+      function loadTraceFileContent(projectId, filePath, label) {
+        var cacheKey = projectId + "::" + filePath;
+        if (state.traceFileCache[cacheKey]) {
+          showArtifactPreview(label, state.traceFileCache[cacheKey]);
+          return Promise.resolve();
+        }
+        return api("GET", "/v1/projects/" + encodeURIComponent(projectId) + "/files?path_prefix=" + encodeURIComponent(filePath)).then(function (payload) {
+          var files = collection(payload);
+          var exact = files.find(function (f) { return f.path === filePath; });
+          if (exact && exact.id) {
+            return api("GET", "/v1/projects/" + encodeURIComponent(projectId) + "/files/" + encodeURIComponent(exact.id)).then(function (fileData) {
+              var content = fileData.content || "(空文件)";
+              state.traceFileCache[cacheKey] = content;
+              showArtifactPreview(label, content);
+            });
+          }
+          showArtifactPreview(label, "(文件未找到: " + filePath + ")");
+        }).catch(function (err) {
+          showArtifactPreview(label, "(加载失败: " + err.message + ")");
+        });
+      }
+
+      function showArtifactPreview(title, content) {
+        els.traceArtifactTitle.textContent = title;
+        els.traceArtifactContent.textContent = content;
+        els.traceArtifactPreview.classList.remove("hidden");
+        els.traceArtifactPreview.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      function hideArtifactPreview() {
+        els.traceArtifactPreview.classList.add("hidden");
+      }
+
+      function refreshTrace() {
+        if (!state.traceSelectedProjectId) return;
+        state.traceFileCache = {};
+        run("刷新追踪", function () {
+          if (state.traceSelectedOrchId) {
+            return loadTraceOrchDetail(state.traceSelectedProjectId, state.traceSelectedOrchId);
+          }
+          return loadTraceOrchestrations(state.traceSelectedProjectId);
+        });
+      }
+
+      // Render
+      function render() {
+        renderAuth();
+        renderGoldenPath();
+        renderOwnerAgent();
+        renderProjects();
+        renderTrace();
+        renderJoinPanel();
+        renderObs();
+        els.actionsPanel.classList.toggle("hidden", !state.principal);
+      }
+
+      // ─── Trace Panel Rendering ──────────────────────────────────────────
+
+      function reviewBadgeForTask(task) {
+        var status = task.status;
+        if (status === "approved") return '<span class="review-badge approved">✓ 已通过</span>';
+        if (status === "changes_requested") return '<span class="review-badge changes_requested">⟳ 需修改</span>';
+        if (status === "ready_for_review") return '<span class="review-badge pending">◉ 待评审</span>';
+        if (status === "failed") return '<span class="review-badge changes_requested">✗ 失败</span>';
+        if (status === "cancelled") return '<span class="review-badge" style="color:var(--soft)">⊘ 已取消</span>';
+        return "";
+      }
+
+      function taskStatusPill(status) {
+        var map = {
+          pending: ["待分发", ""],
+          dispatched: ["已分发", "accent"],
+          running: ["执行中", "warn"],
+          ready_for_review: ["待评审", "warn"],
+          approved: ["已通过", "good"],
+          changes_requested: ["需修改", "bad"],
+          blocked: ["阻塞", "bad"],
+          failed: ["失败", "bad"],
+          cancelled: ["已取消", ""]
+        };
+        var pair = map[status] || [status, ""];
+        return '<span class="pill ' + pair[1] + '">' + escapeHtml(pair[0]) + '</span>';
+      }
+
+      function artifactLink(label, projectId, filePath, hasFile) {
+        if (hasFile) {
+          return '<span class="trace-artifact-link has-file" data-trace-artifact="' + escapeAttr(filePath) + '" data-trace-artifact-label="' + escapeAttr(label) + '" data-trace-artifact-project="' + escapeAttr(projectId) + '">' + escapeHtml(label) + ' ✓</span>';
+        }
+        return '<span class="trace-artifact-link missing">' + escapeHtml(label) + ' — 未生成</span>';
+      }
+
+      function renderTrace() {
+        if (!state.principal) {
+          els.tracePanel.classList.add("hidden");
+          return;
+        }
+        els.tracePanel.classList.remove("hidden");
+
+        // Sync project selector
+        var prevVal = els.traceProjectSelect.value;
+        var opts = '<option value="">选择项目...</option>';
+        state.projects.forEach(function (p) {
+          opts += '<option value="' + escapeAttr(p.id) + '"' + (p.id === state.traceSelectedProjectId ? ' selected' : '') + '>' + escapeHtml(p.name || p.id) + '</option>';
+        });
+        els.traceProjectSelect.innerHTML = opts;
+        if (prevVal && state.traceSelectedProjectId === prevVal) {
+          els.traceProjectSelect.value = prevVal;
+        }
+
+        // Orchestration list
+        var orchs = state.traceOrchestrations;
+        if (!state.traceSelectedProjectId) {
+          els.traceOrchList.innerHTML = emptyHtml("选择项目查看编排");
+          els.traceOrchDetail.classList.add("hidden");
+          return;
+        }
+        if (!orchs.length) {
+          els.traceOrchList.innerHTML = emptyHtml("该项目暂无编排");
+          els.traceOrchDetail.classList.add("hidden");
+          return;
+        }
+
+        els.traceOrchList.innerHTML = orchs.map(function (orch) {
+          var isActive = orch.id === state.traceSelectedOrchId;
+          return '<div class="orch-card' + (isActive ? " active" : "") + '" data-trace-orch="' + escapeAttr(orch.id) + '">' +
+            '<div class="orch-card-title"><span>' + escapeHtml(orch.title || orch.id) + '</span>' + statusPill(orch.status) + '</div>' +
+            '<div class="meta">' + escapeHtml((orch.objective || "").slice(0, 120)) + '</div>' +
+            '<div class="meta mono" style="font-size:11px">' + escapeHtml(orch.id) + '</div>' +
+          '</div>';
+        }).join("");
+
+        // Selected orchestration detail
+        var detail = state.traceOrchDetail;
+        if (!detail || !state.traceSelectedOrchId) {
+          els.traceOrchDetail.classList.add("hidden");
+          return;
+        }
+        els.traceOrchDetail.classList.remove("hidden");
+
+        els.traceOrchTitle.textContent = detail.title || detail.id;
+        els.traceOrchId.textContent = detail.id;
+        els.traceOrchStatusPill.innerHTML = statusPill(detail.status);
+        els.traceOrchTaskCount.textContent = state.traceTasks.length;
+        els.traceOrchObjective.textContent = detail.objective || "";
+
+        // TRACE.md
+        var tracePath = detail.paths && detail.paths.trace;
+        if (tracePath) {
+          els.traceMdLink.className = "trace-artifact-link has-file";
+          els.traceMdLink.textContent = "TRACE.md ✓";
+          els.traceMdLink.setAttribute("data-trace-artifact", tracePath);
+          els.traceMdLink.setAttribute("data-trace-artifact-label", "TRACE.md");
+          els.traceMdLink.setAttribute("data-trace-artifact-project", detail.project_id);
+        } else {
+          els.traceMdLink.className = "trace-artifact-link missing";
+          els.traceMdLink.textContent = "TRACE.md — 未生成";
+          els.traceMdLink.removeAttribute("data-trace-artifact");
+          els.traceMdLink.removeAttribute("data-trace-artifact-label");
+          els.traceMdLink.removeAttribute("data-trace-artifact-project");
+        }
+        els.traceMdPreview.classList.add("hidden");
+
+        // Tasks
+        var tasks = state.traceTasks;
+        if (!tasks.length) {
+          els.traceTaskGrid.innerHTML = emptyHtml("暂无任务");
+          return;
+        }
+
+        els.traceTaskGrid.innerHTML = tasks.map(function (task) {
+          var arts = task.md_artifacts || {};
+          var pid = task.project_id;
+          var taskPath = arts.task || null;
+          var resultPath = arts.result || task.result_path || null;
+          var evidencePath = arts.evidence || task.evidence_path || null;
+          var reviewPath = arts.review || null;
+          var changelogPath = arts.changelog || null;
+
+          var artifactHtml = '<div class="trace-artifact-row">';
+          artifactHtml += artifactLink("TASK.md", pid, taskPath, !!taskPath);
+          artifactHtml += artifactLink("RESULT.md", pid, resultPath, !!resultPath);
+          artifactHtml += artifactLink("EVIDENCE.md", pid, evidencePath, !!evidencePath);
+          artifactHtml += artifactLink("REVIEW.md", pid, reviewPath, !!reviewPath);
+          artifactHtml += artifactLink("CHANGELOG.md", pid, changelogPath, !!changelogPath);
+          artifactHtml += '</div>';
+
+          var reviewBadge = reviewBadgeForTask(task);
+          var reviewNotesHtml = "";
+          if (task.review_notes) {
+            reviewNotesHtml = '<div class="meta" style="margin-top:4px"><strong>评审备注：</strong>' + escapeHtml(task.review_notes) + '</div>';
+          }
+          if (task.requested_changes) {
+            reviewNotesHtml += '<div class="meta" style="margin-top:2px;color:var(--bad)"><strong>要求修改：</strong>' + escapeHtml(task.requested_changes) + '</div>';
+          }
+
+          return '<div class="item">' +
+            '<div class="item-title">' +
+              '<span>' + escapeHtml(task.title || task.id) + '</span>' +
+              '<span class="row wrap">' + taskStatusPill(task.status) + ' ' + reviewBadge + '</span>' +
+            '</div>' +
+            '<div class="meta" style="font-size:11px">任务 ' + escapeHtml(task.id.slice(0, 8)) + (task.assigned_agent_id ? ' · Agent ' + escapeHtml(task.assigned_agent_id.slice(0, 8)) : '') + '</div>' +
+            artifactHtml +
+            reviewNotesHtml +
+          '</div>';
+        }).join("");
+      }
+
+      function renderAuth() {
+        var hasToken = !!state.jwt;
+        var hasPrincipal = !!(state.jwt && state.principal);
+        els.loginBox.classList.toggle("hidden", hasToken);
+        els.accountBox.classList.toggle("hidden", !hasToken);
+        els.originHint.classList.toggle("hidden", location.protocol !== "file:");
+        if (hasPrincipal) {
+          els.accountId.textContent = state.principal.id || "-";
+          els.accountEmail.textContent = state.principal.email || state.principal.username || "-";
+          els.accountName.textContent = state.principal.display_name || state.principal.email || state.principal.username || "-";
+        } else if (hasToken) {
+          els.accountId.textContent = "加载中...";
+          els.accountEmail.textContent = "加载中...";
+          els.accountName.textContent = "加载中...";
+        }
+      }
+
+      function renderOwnerAgent() {
+        if (state.boundAgent) {
+          els.ownerAgentStatusPill.textContent = "已绑定";
+          els.ownerAgentStatusPill.className = "pill good";
+          els.boundAgentBox.classList.remove("hidden");
+          els.unboundAgentBox.classList.add("hidden");
+          els.boundAgentName.textContent = state.boundAgent.name || state.boundAgent.id || "-";
+          els.boundAgentId.textContent = state.boundAgent.id || "-";
+          els.boundAgentIdentityCode.textContent = agentIdentityCode(state.boundAgent);
+          var project = state.projects.find(function (p) { return p.id === state.boundAgent.project_id; });
+          els.boundAgentProject.textContent = project ? project.name : (state.boundAgent.project_id || "-");
+          var presence = presenceLabel(state.boundAgent);
+          els.boundAgentPresence.innerHTML = statusPill(presence);
+          els.boundAgentHeartbeat.textContent = heartbeatLabel(state.boundAgent);
+          var prefix = state.boundAgent.api_key_prefix || state.boundAgent.api_key ? (state.boundAgent.api_key_prefix || String(state.boundAgent.api_key || "").slice(0, 8) + "...") : "-";
+          els.boundApiKeyPrefix.textContent = prefix;
+          // Identity: only show if we have a fresh api_key (never stored server-side, only returned once at creation)
+          if (state.boundAgent.api_key) {
+            els.boundIdentityBox.classList.remove("hidden");
+            var proj = state.projects.find(function (p) { return p.id === state.boundAgent.project_id; });
+            var identity = buildIdentity(state.boundAgent, proj);
+            els.identityBox.textContent = JSON.stringify(identity, null, 2);
+            state.freshIdentity = identity;
+          } else {
+            els.boundIdentityBox.classList.add("hidden");
+            state.freshIdentity = null;
+          }
+          // Prompt box (always show for bound agent, secret-free)
+          var promptProj = state.projects.find(function (p) { return p.id === state.boundAgent.project_id; });
+          els.ownerAgentPromptBox.textContent = buildOwnerAgentPrompt(state.boundAgent, promptProj);
+        } else {
+          els.ownerAgentStatusPill.textContent = state.ownerAgentId ? "加载中..." : "未绑定";
+          els.ownerAgentStatusPill.className = "pill warn";
+          els.boundAgentBox.classList.add("hidden");
+          els.unboundAgentBox.classList.remove("hidden");
+          renderBindForm();
+        }
+      }
+
+      function renderBindForm() {
+        // Populate project select
+        els.bindProjectSelect.innerHTML = '<option value="">选择项目...</option>' +
+          state.projects.map(function (p) {
+            return '<option value="' + escapeAttr(p.id) + '">' + escapeHtml(p.name || p.id) + '</option>';
+          }).join("");
+        els.bindAgentSelect.innerHTML = '<option value="">请先选择项目</option>';
+        els.bindAgentSelect.disabled = true;
+        els.doBindBtn.disabled = true;
+      }
+
+      function onBindProjectChange() {
+        var projectId = els.bindProjectSelect.value;
+        state.selectedBindProjectId = projectId;
+        if (!projectId) {
+          els.bindAgentSelect.innerHTML = '<option value="">请先选择项目</option>';
+          els.bindAgentSelect.disabled = true;
+          els.doBindBtn.disabled = true;
+          return;
+        }
+        els.bindAgentSelect.innerHTML = '<option value="">加载中...</option>';
+        els.bindAgentSelect.disabled = true;
+        els.doBindBtn.disabled = true;
+        loadProjectAgents(projectId).then(function () {
+          var agents = state.projectAgents[projectId] || [];
+          if (!agents.length) {
+            els.bindAgentSelect.innerHTML = '<option value="">该项目下没有 Agent</option>';
+            return;
+          }
+          els.bindAgentSelect.innerHTML = '<option value="">选择 Agent...</option>' +
+            agents.map(function (a) {
+              return '<option value="' + escapeAttr(a.id) + '">' + escapeHtml(a.name || a.id) + '</option>';
+            }).join("");
+          els.bindAgentSelect.disabled = false;
+        }).catch(function () {
+          els.bindAgentSelect.innerHTML = '<option value="">加载失败</option>';
+        });
+      }
+
+      function onBindAgentChange() {
+        els.doBindBtn.disabled = !els.bindAgentSelect.value;
+      }
+
+      function renderProjects() {
+        if (!state.principal) {
+          els.projectsPanel.classList.add("hidden");
+          return;
+        }
+        els.projectsPanel.classList.remove("hidden");
+        els.projectCountPill.textContent = state.projects.length + " 个";
+        if (!state.projects.length) {
+          els.projectList.innerHTML = emptyHtml("暂无项目");
+          return;
+        }
+        els.projectList.innerHTML = state.projects.map(function (project) {
+          var isBoundProject = state.boundAgent && state.boundAgent.project_id === project.id;
+          var href = './human-workspace-simple.html?project_id=' + encodeURIComponent(project.id);
+          return '<a class="card' + (isBoundProject ? " active" : "") + '" href="' + escapeAttr(href) + '">' +
+            '<div class="card-title"><span>' + escapeHtml(project.name || project.id) + '</span>' + statusPill(project.visibility || "private") + '</div>' +
+            '<div class="meta">' + escapeHtml(project.description || "") + '</div>' +
+            '<div class="meta mono" style="font-size:11px">' + escapeHtml(project.id) + '</div>' +
+            (isBoundProject ? '<div class="meta" style="margin-top:4px;color:var(--accent);font-weight:700">★ Owner Agent 所属</div>' : "") +
+          '</a>';
+        }).join("");
+      }
+
+      function renderJoinPanel() {
+        if (!state.principal) {
+          els.joinPanel.classList.add("hidden");
+          return;
+        }
+        els.joinPanel.classList.remove("hidden");
+        // Sync project select
+        var prev = els.joinProjectSelect.value;
+        els.joinProjectSelect.innerHTML = '<option value="">选择项目...</option>' +
+          state.projects.map(function (p) {
+            return '<option value="' + escapeAttr(p.id) + '"' + (p.id === state.selectedProjectForJoin ? ' selected' : '') + '>' + escapeHtml(p.name || p.id) + '</option>';
+          }).join("");
+        if (prev && state.selectedProjectForJoin === prev) {
+          els.joinProjectSelect.value = prev;
+        }
+        els.generateInviteLinkBtn.disabled = !state.selectedProjectForJoin;
+      }
+
+      // Events
+      function bindEvents() {
+        $("loginBtn").addEventListener("click", login);
+        $("registerBtn").addEventListener("click", registerAndLogin);
+        $("authPassword").addEventListener("keydown", function (event) {
+          if (event.key === "Enter") login();
+        });
+        $("logoutBtn").addEventListener("click", logout);
+        $("doBindBtn").addEventListener("click", function () {
+          var agentId = els.bindAgentSelect.value;
+          if (!agentId) return;
+          doBind(agentId);
+        });
+        $("unbindBtn").addEventListener("click", function () {
+          if (!confirm("确定要解除 Owner Agent 绑定吗？\n\n注意：解除绑定仅移除 Owner 身份关联，不移除 Agent 的项目成员身份，Agent 仍可独立协作。")) return;
+          doUnbind();
+        });
+        $("copyIdentityBtn").addEventListener("click", function () {
+          if (state.freshIdentity) {
+            safeCopy(JSON.stringify(state.freshIdentity, null, 2), "身份已复制到剪贴板");
+          }
+        });
+        $("downloadIdentityBtn").addEventListener("click", function () {
+          if (state.freshIdentity) {
+            var name = state.freshIdentity.agent ? (state.freshIdentity.agent.name || state.freshIdentity.agent.id) : "owner-agent";
+            downloadJson("owner-agent-identity-" + slug(name) + ".json", state.freshIdentity);
+          }
+        });
+        $("copyAgentPromptBtn").addEventListener("click", function () {
+          var text = els.ownerAgentPromptBox.textContent;
+          if (text) safeCopy(text, "Agent 启动指引已复制到剪贴板");
+        });
+        els.bindProjectSelect.addEventListener("change", onBindProjectChange);
+        els.bindAgentSelect.addEventListener("change", onBindAgentChange);
+        els.obsRefreshBtn.addEventListener("click", refreshObs);
+        els.obsProjectSelect.addEventListener("change", onObsProjectChange);
+        // Golden Path
+        $("gpRefreshBtn").addEventListener("click", refreshGoldenPath);
+        // Join Requests & Invite
+        els.joinProjectSelect.addEventListener("change", function () {
+          state.selectedProjectForJoin = els.joinProjectSelect.value;
+          els.generateInviteLinkBtn.disabled = !state.selectedProjectForJoin;
+          els.inviteLinkBox.classList.add("hidden");
+          loadJoinRequests(state.selectedProjectForJoin);
+        });
+        els.generateInviteLinkBtn.addEventListener("click", generateInviteLink);
+        els.inviteLinkText.addEventListener("click", function () {
+          var text = els.inviteLinkText.textContent;
+          if (text) safeCopy(text, "邀请链接已复制到剪贴板");
+        });
+        // Delegate approve/reject buttons
+        els.joinRequestList.addEventListener("click", function (e) {
+          var approveBtn = e.target.closest("[data-approve-join]");
+          if (approveBtn) { approveJoinRequest(approveBtn.dataset.approveJoin); return; }
+          var rejectBtn = e.target.closest("[data-reject-join]");
+          if (rejectBtn) { rejectJoinRequest(rejectBtn.dataset.rejectJoin); return; }
+        });
+        // Trace panel
+        els.traceProjectSelect.addEventListener("change", function () {
+          state.traceSelectedProjectId = els.traceProjectSelect.value;
+          state.traceSelectedOrchId = "";
+          state.traceOrchDetail = null;
+          state.traceTasks = [];
+          state.traceFileCache = {};
+          hideArtifactPreview();
+          if (state.traceSelectedProjectId) {
+            run("加载编排列表", function () {
+              return loadTraceOrchestrations(state.traceSelectedProjectId);
+            });
+          } else {
+            renderTrace();
+          }
+        });
+        els.traceRefreshBtn.addEventListener("click", refreshTrace);
+        els.traceClosePreviewBtn.addEventListener("click", hideArtifactPreview);
+        // Delegate: click on orchestration card
+        els.traceOrchList.addEventListener("click", function (e) {
+          var card = e.target.closest("[data-trace-orch]");
+          if (!card) return;
+          var orchId = card.getAttribute("data-trace-orch");
+          if (!orchId || orchId === state.traceSelectedOrchId) return;
+          hideArtifactPreview();
+          run("加载编排详情", function () {
+            return loadTraceOrchDetail(state.traceSelectedProjectId, orchId);
+          });
+        });
+        // Delegate: click on artifact link
+        document.addEventListener("click", function (e) {
+          var link = e.target.closest(".trace-artifact-link.has-file");
+          if (!link) return;
+          var filePath = link.getAttribute("data-trace-artifact");
+          var label = link.getAttribute("data-trace-artifact-label");
+          var pid = link.getAttribute("data-trace-artifact-project");
+          if (filePath && pid) {
+            loadTraceFileContent(pid, filePath, label);
+          }
+        });
+
+        // Collapse toggles
+        $("obsCollapseBtn").addEventListener("click", function () {
+          var body = $("obsBody");
+          var hidden = body.classList.toggle("hidden");
+          this.textContent = hidden ? "▸" : "▾";
+        });
+        $("advancedCollapseBtn").addEventListener("click", function () {
+          var body = this.closest(".panel-head").nextElementSibling;
+          var hidden = body.classList.toggle("hidden");
+          this.textContent = hidden ? "▸" : "▾";
+        });
+        document.addEventListener("click", function (e) {
+          var btn = e.target.closest(".copy-watch-btn");
+          if (!btn) return;
+          var cmd = btn.getAttribute("data-cmd");
+          if (cmd) safeCopy(cmd, "已复制: " + cmd);
+        });
+      }
+
+      loadStoredConfig();
+      if (window.location.protocol === "file:") {
+        window.location.replace(state.baseUrl.replace(/\/+$/, "") + "/owner-home.html");
+        return;
+      }
+      bindEvents();
+      render();
+
+      if (state.jwt) {
+        run("加载账号", function () {
+          return loadMe();
+        }).catch(function () {
+          log("加载失败，请重新登录", "warn");
+          removeStorage();
+          state.jwt = "";
+          state.principal = null;
+          render();
+        });
+      } else {
+        log("请登录以继续");
+      }
+    })();
+  </script>
+</body>
+</html>

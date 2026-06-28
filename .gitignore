@@ -1,0 +1,57 @@
+# ─── Build artifacts ───
+backend/dist/
+backend/node_modules/
+**/__pycache__/
+*.egg-info/
+.venv/
+venv/
+
+# ─── Runtime data (contains real IPs, keys, logs — NEVER commit) ───
+backend/project-git/
+deploy/*-artifacts/
+deploy/*-e2e-artifacts/
+deploy/pm-workflow-e2e-artifacts/
+deploy/pmverify-*/
+dashboard-e2e-artifacts/
+multiworker-evidence-*.json
+*.evidence.json
+
+# ─── Development logs (private, may contain IPs/credentials) ───
+.codex/pm-workers/tasks/
+.codex/pm-workers/inbox/
+.codex/pm-workers/*.stderr.log
+.codex/pm-workers/*.log
+*.stderr.log
+*.err.log
+
+# ─── Local agent runtime state ───
+.zz-agent/
+.zcode/cli/db/
+.zcode/cli/log/
+.zcode/cli/debug/
+
+# ─── Environment / secrets ───
+.env
+.env.*
+*.local
+deploy/nas/.env
+
+# ─── Test evidence ───
+cli/tests/evidence/
+backend/tests/evidence/
+
+# ─── OS files ───
+.DS_Store
+Thumbs.db
+
+# ─── IDE ───
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── Archives ───
+*.tar.gz
+*.zip
+deploy/onboarding-smoke-artifacts/
+deploy/dashboard-multiworker-e2e-artifacts/

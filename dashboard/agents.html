@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent 管理 — Agent Collaboration OS</title>
+  <style>
+    :root { color-scheme:light; --bg:#eef2f6; --panel:#fff; --panel-2:#f8fafc; --line:#d7dee8; --text:#182230; --muted:#61708a; --soft:#7c8aa1; --accent:#2563eb; --good:#047857; --warn:#b45309; --bad:#b91c1c; --shadow:0 2px 8px rgba(24,34,48,.06); }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 Inter,system-ui,sans-serif; }
+    button { border:0; cursor:pointer; font:inherit; }
+    a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+    .navbar { background:var(--panel); border-bottom:1px solid var(--line); display:flex; align-items:center; gap:16px; padding:0 24px; height:52px; position:sticky; top:0; z-index:10; }
+    .navbar-brand { font-weight:700; font-size:15px; }
+    .navbar-nav { display:flex; gap:2px; flex:1; }
+    .nav-link { padding:6px 14px; border-radius:6px; font-size:13px; color:var(--muted); cursor:pointer; }
+    .nav-link:hover { background:var(--panel-2); color:var(--text); }
+    .nav-link.active { background:var(--accent); color:#fff; }
+    .navbar-right { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
+    .page { max-width:1000px; margin:0 auto; padding:24px; }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; box-shadow:var(--shadow); margin-bottom:16px; }
+    .card-head { padding:12px 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; }
+    .card-head h2 { margin:0; font-size:15px; }
+    .btn { padding:5px 12px; border-radius:6px; font-size:12px; font-weight:500; }
+    .btn-primary { background:var(--accent); color:#fff; }
+    .btn-ghost { background:transparent; color:var(--muted); border:1px solid var(--line); }
+    .btn-good { background:var(--good); color:#fff; }
+    .btn-bad { background:var(--bad); color:#fff; }
+    .btn-sm { padding:3px 8px; font-size:11px; }
+    /* Agent list */
+    .agent-list { }
+    .agent-item { display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--line); cursor:pointer; transition:background .1s; }
+    .agent-item:hover { background:var(--panel-2); }
+    .agent-item:last-child { border-bottom:none; }
+    .agent-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+    .agent-dot.online { background:var(--good); box-shadow:0 0 4px var(--good); }
+    .agent-dot.offline { background:var(--soft); }
+    .agent-info { flex:1; min-width:0; }
+    .agent-name { font-weight:600; font-size:14px; }
+    .agent-meta { font-size:12px; color:var(--muted); display:flex; gap:8px; flex-wrap:wrap; margin-top:2px; }
+    .pill { font-size:11px; padding:1px 8px; border-radius:4px; background:var(--panel-2); color:var(--muted); }
+    .pill.main { background:#dbeafe; color:#1e40af; font-weight:600; }
+    .pill.active { background:#dcfce7; color:#166534; }
+    .pill.retired { background:#fee2e2; color:#991b1b; }
+    .agent-actions { display:flex; gap:4px; }
+    /* Drawer */
+    .drawer-overlay { position:fixed; inset:0; background:rgba(0,0,0,.3); z-index:50; }
+    .drawer { position:fixed; right:0; top:0; bottom:0; width:480px; max-width:90vw; background:var(--panel); box-shadow:-4px 0 24px rgba(0,0,0,.1); z-index:51; overflow-y:auto; }
+    .drawer-head { padding:16px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; background:var(--panel); z-index:1; }
+    .drawer-body { padding:16px 20px; }
+    .detail-row { display:flex; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); font-size:13px; }
+    .detail-label { color:var(--muted); min-width:100px; font-weight:600; }
+    .detail-value { font-family:ui-monospace,monospace; font-size:12px; word-break:break-all; flex:1; }
+    .hidden { display:none !important; }
+    .empty { text-align:center; color:var(--soft); padding:32px; font-size:13px; }
+    select { font-size:12px; padding:3px 8px; border:1px solid var(--line); border-radius:4px; }
+  </style>
+</head>
+<body>
+
+<div class="navbar">
+  <div class="navbar-brand">Agent Collaboration OS</div>
+  <div class="navbar-nav">
+    <a class="nav-link" href="workbench.html">工作台</a>
+    <a class="nav-link" href="tasks.html">任务</a>
+    <a class="nav-link" href="repository.html">项目空间</a>
+    <span class="nav-link active">Agent</span>
+    <a class="nav-link" href="approvals.html">审批</a>
+  </div>
+  <div class="navbar-right">
+    <select id="projectSelect"></select>
+  </div>
+</div>
+
+<div class="page">
+  <div class="card">
+    <div class="card-head">
+      <h2>Agent 管理</h2>
+      <span style="font-size:12px;color:var(--muted);" id="agentCount"></span>
+    </div>
+    <div class="agent-list" id="agentList">
+      <div class="empty">加载中…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Detail drawer -->
+<div id="drawerOverlay" class="drawer-overlay hidden"></div>
+<div id="drawer" class="drawer hidden">
+  <div class="drawer-head">
+    <h2 id="drawerTitle">Agent 详情</h2>
+    <button class="btn btn-ghost btn-sm" id="drawerClose">✕</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</div>
+
+<script>
+(function(){
+  var SK='zz_runtime_dashboard_v1';
+  var API=window.location.origin.replace(/:\d+$/,':18080')+'/agent';
+  var state={jwt:'',projectId:'',agents:[]};
+
+  function load(){try{return JSON.parse(localStorage.getItem(SK)||'{}')}catch{return{}}}
+  function save(){localStorage.setItem(SK,JSON.stringify({jwt:state.jwt,selectedProjectId:state.projectId}))}
+  function api(m,p,b){var o={method:m,headers:{'Content-Type':'application/json'}};if(state.jwt)o.headers.Authorization='Bearer '+state.jwt;if(b)o.body=JSON.stringify(b);return fetch(API+'/v1'+p,o).then(function(r){if(!r.ok)throw new Error(r.status);return r.json()})}
+  function esc(s){if(!s)return'';var d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+  function init(){
+    var s=load();state.jwt=s.jwt||'';state.projectId=s.selectedProjectId||'';
+    if(!state.jwt){window.location.href='workbench.html';return;}
+    api('GET','/projects?limit=100').then(function(res){
+      var ps=res.data||res||[];
+      var sel=document.getElementById('projectSelect');
+      sel.innerHTML=ps.map(function(p){return'<option value="'+p.id+'"'+(p.id===state.projectId?' selected':'')+'>'+esc(p.name)+'</option>'}).join('');
+      if(!state.projectId&&ps.length){state.projectId=ps[0].id;save();}
+      loadAgents();
+    }).catch(function(){window.location.href='workbench.html';});
+  }
+
+  document.getElementById('projectSelect').addEventListener('change',function(e){state.projectId=e.target.value;save();loadAgents();});
+
+  function loadAgents(){
+    api('GET','/projects/'+state.projectId+'/agents?limit=100').then(function(res){
+      state.agents=(res.data||[]).sort(function(a,b){return(b.is_online?1:0)-(a.is_online?1:0);});
+      document.getElementById('agentCount').textContent=state.agents.length+' Agent';
+      renderList();
+    }).catch(function(e){document.getElementById('agentList').innerHTML='<div class="empty">加载失败: '+esc(e.message)+'</div>';});
+  }
+
+  function renderList(){
+    if(!state.agents.length){document.getElementById('agentList').innerHTML='<div class="empty">暂无 Agent。注册一个 Agent 开始协作。</div>';return;}
+    // Also fetch project to know main_agent_id
+    api('GET','/projects/'+state.projectId).then(function(proj){
+      var mainId=proj.main_agent_id;
+      var html=state.agents.map(function(a){
+        var online=a.is_online||a.presence==='online';
+        var isMain=a.id===mainId;
+        var lifecycle=a.lifecycle_status||a.status||'';
+        var rolePill = isMain?'<span class="pill main">主 Agent</span>':'';
+        var statusPill = lifecycle==='active'?'<span class="pill active">活跃</span>':lifecycle==='retired'?'<span class="pill retired">已退役</span>':'';
+        var heartbeat = a.last_heartbeat_at?new Date(a.last_heartbeat_at).toLocaleString('zh-CN',{hour:'2-digit',minute:'2-digit',month:'short',day:'numeric'}):'从未';
+        var h='<div class="agent-item" data-agent-id="'+a.id+'">';
+        h+='<span class="agent-dot '+(online?'online':'offline')+'"></span>';
+        h+='<div class="agent-info"><div class="agent-name">'+esc(a.name)+'</div>';
+        h+='<div class="agent-meta">'+rolePill+statusPill+'<span>心跳: '+esc(heartbeat)+'</span></div></div>';
+        h+='</div>';
+        return h;
+      }).join('');
+      document.getElementById('agentList').innerHTML=html;
+      // Click handlers
+      document.querySelectorAll('.agent-item').forEach(function(el){
+        el.addEventListener('click',function(){openDrawer(el.getAttribute('data-agent-id'),mainId);});
+      });
+    });
+  }
+
+  function openDrawer(id,mainId){
+    var a=state.agents.find(function(x){return x.id===id;});
+    if(!a)return;
+    document.getElementById('drawerTitle').textContent=a.name;
+    var online=a.is_online||a.presence==='online';
+    var rows=[
+      ['Agent ID',a.id],
+      ['身份码',a.identity_code||'—'],
+      ['在线状态',online?'🟢 在线':'⚪ 离线'],
+      ['生命周期',a.lifecycle_status||a.status||'—'],
+      ['是否主 Agent',a.id===mainId?'是':'否'],
+      ['最后心跳',a.last_heartbeat_at?new Date(a.last_heartbeat_at).toLocaleString():'从未'],
+      ['描述',a.description||'—'],
+      ['端点',a.endpoint_url||'—'],
+      ['创建时间',a.created_at?new Date(a.created_at).toLocaleString():'—'],
+    ];
+    var html=rows.map(function(r){return'<div class="detail-row"><span class="detail-label">'+esc(r[0])+'</span><span class="detail-value">'+esc(r[1])+'</span></div>'}).join('');
+    // Actions
+    html+='<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">';
+    if(a.id!==mainId&&a.lifecycle_status==='active')html+='<button class="btn btn-primary btn-sm" data-act="set-main">设为主 Agent</button>';
+    if(a.lifecycle_status==='active')html+='<button class="btn btn-bad btn-sm" data-act="retire">退役</button>';
+    html+='<a class="btn btn-ghost btn-sm" href="workbench.html">返回工作台</a>';
+    html+='</div>';
+    document.getElementById('drawerBody').innerHTML=html;
+    document.getElementById('drawerOverlay').classList.remove('hidden');
+    document.getElementById('drawer').classList.remove('hidden');
+    // Wire actions
+    document.querySelector('[data-act="set-main"]')&&document.querySelector('[data-act="set-main"]').addEventListener('click',function(){
+      api('PATCH','/projects/'+state.projectId,{main_agent_id:id}).then(function(){alert('已设为主 Agent');loadAgents();closeDrawer();}).catch(function(e){alert('操作失败: '+e.message);});
+    });
+    document.querySelector('[data-act="retire"]')&&document.querySelector('[data-act="retire"]').addEventListener('click',function(){
+      if(!confirm('确定退役此 Agent?'))return;
+      api('POST','/projects/'+state.projectId+'/agents/'+id+'/retire',{}).then(function(){alert('已退役');loadAgents();closeDrawer();}).catch(function(e){alert('操作失败: '+e.message);});
+    });
+  }
+
+  function closeDrawer(){document.getElementById('drawerOverlay').classList.add('hidden');document.getElementById('drawer').classList.add('hidden');}
+  document.getElementById('drawerClose').addEventListener('click',closeDrawer);
+  document.getElementById('drawerOverlay').addEventListener('click',closeDrawer);
+
+  init();
+})();
+</script>
+</body>
+</html>
